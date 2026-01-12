@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Get the directory of the app bundle
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd ../../../ && pwd )"
+
+# Change to project directory
+cd "$DIR"
+
+# Activate virtual environment if it exists
+if [ -d "venv" ]; then
+    source venv/bin/activate
+else
+    # Create venv if it doesn't exist
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+fi
+
+# Launch GUI
+python app_gui.py 2>&1 | tee logs/app.log
+
+# Keep window open on error
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "Error occurred. Check logs/app.log for details."
+    echo "Press any key to exit..."
+    read -n 1
+fi
