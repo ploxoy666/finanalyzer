@@ -453,7 +453,7 @@ class ReportGenerator:
         data = [
             ["Metric", "Value", "Currency"],
             ["Current Stock Price", f"${mkt.get('current_price', 0):,.2f}", mkt.get('currency', 'USD')],
-            ["Market Capitalization", f"${mkt.get('market_cap', 0)/1e9:,.1f}B", mkt.get('currency', 'USD')],
+            ["Market Capitalization", f"${mkt.get('market_cap')/1e9:,.1f}B" if mkt.get('market_cap') else "N/A", mkt.get('currency', 'USD')],
             ["Forward P/E Ratio", f"{mkt.get('forward_pe', 0):,.1f}x" if mkt.get('forward_pe') else "N/A", "-"],
             ["Dividend Yield", f"{mkt.get('dividend_yield', 0)*100:,.2f}%" if mkt.get('dividend_yield') else "N/A", "-"]
         ]
