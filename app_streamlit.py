@@ -371,7 +371,9 @@ if st.session_state.analysis_complete and st.session_state.model:
         with col1:
             st.metric("Price", f"${mkt['current_price']:,.2f}")
         with col2:
-            st.metric("Market Cap", f"${mkt['market_cap']/1e9:,.1f}B")
+            mcap = mkt.get('market_cap')
+            mcap_str = f"${mcap/1e9:,.1f}B" if mcap else "N/A"
+            st.metric("Market Cap", mcap_str)
     
     with col3:
         if sentiment:
@@ -392,7 +394,9 @@ if st.session_state.analysis_complete and st.session_state.model:
         with m2_col1:
             st.metric("Price", f"${mkt['current_price']:,.2f}", delta=mkt['currency'])
         with m2_col2:
-            st.metric("Market Cap", f"${mkt['market_cap']/1e9:,.1f}B")
+            mcap = mkt.get('market_cap')
+            mcap_str = f"${mcap/1e9:,.1f}B" if mcap else "N/A"
+            st.metric("Market Cap", mcap_str)
         with m2_col3:
             upside = model.upside_potential or 0
             st.metric("Target Price", f"${model.target_price:,.2f}", delta=f"{upside:+.1%}")
