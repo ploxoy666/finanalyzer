@@ -7,6 +7,7 @@ from loguru import logger
 
 import io
 import re
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -217,8 +218,11 @@ class PDFParser:
         except Exception as e:
             logger.warning(f"pdfplumber table extraction failed: {e}")
 
-        # Method 2: Camelot (Only on TARGET pages)
-        if target_pages:
+        # Method 2: Camelot (Only on TARGET pages, and NOT on Streamlit Cloud)
+        # Streamlit Cloud has 1GB RAM limit. Camelot + Ghostscript can easily exceed this on 10+ pages.
+        is_streamlit_cloud = os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud" or os.environ.get("HOSTNAME", "").startswith("streamlit")
+        
+        if target_pages and not is_streamlit_cloud:
             try:
                 tables_camelot = camelot.read_pdf(
                     str(self.pdf_path),
@@ -236,6 +240,8 @@ class PDFParser:
                     })
             except Exception as e:
                 logger.warning(f"Targeted Camelot extraction failed: {e}")
+        elif is_streamlit_cloud:
+            logger.info("Skipping Camelot table extraction on Streamlit Cloud to preserve memory.")
 
         logger.info(f"Total tables extracted: {len(all_tables)}")
         return all_tables
