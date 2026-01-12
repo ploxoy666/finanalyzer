@@ -38,12 +38,23 @@ class SentimentAnalyzer:
 
     def _load_local_model(self):
         """Lazy load local model to save RAM if API fails or is not used."""
+        # Safety check: Don't load 1.2GB model on low-RAM environments (like Streamlit Cloud)
+        # unless explicitly permitted.
+        is_streamlit_cloud = os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud" or os.environ.get("HOSTNAME", "").startswith("streamlit")
+        
+        if is_streamlit_cloud and not self.api_key:
+            logger.warning("Running on Streamlit Cloud without API key. Skipping local FinBERT to prevent crash.")
+            return
+
         if not self.model and TRANSFORMERS_AVAILABLE:
-            logger.info("Loading local FinBERT model...")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_NAME)
-            # Use use_safetensors=True to bypass version checks for older torch on Intel Macs
-            self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_NAME, use_safetensors=True)
-            self.model.eval()
+            try:
+                logger.info("Loading local FinBERT model...")
+                self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_NAME)
+                self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_NAME, use_safetensors=True)
+                self.model.eval()
+            except Exception as e:
+                logger.error(f"Failed to load local model: {e}")
+                self.model = None
 
     def analyze(self, text: str) -> Dict:
         """

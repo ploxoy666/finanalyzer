@@ -176,62 +176,35 @@ class PDFParser:
     
     def _extract_tables(self) -> List[Dict]:
         """
-        Extract tables from PDF using multiple methods.
-        
-        Returns:
-            List of table dictionaries with data and metadata
+        Extract tables from PDF using targeted and lightweight methods.
+        Uses identified structure to target heavy extraction only on relevant pages.
         """
         all_tables = []
+        target_pages = []
         
-        # Method 1: Camelot (best for well-structured tables)
-        try:
-            tables_camelot = camelot.read_pdf(
-                str(self.pdf_path),
-                pages='all',
-                flavor='lattice'  # or 'stream'
-            )
-            
-            for i, table in enumerate(tables_camelot):
-                all_tables.append({
-                    'method': 'camelot',
-                    'table_id': i,
-                    'page': table.page,
-                    'data': table.df.to_dict('records'),
-                    'dataframe': table.df,
-                    'accuracy': table.accuracy if hasattr(table, 'accuracy') else None
-                })
-                logger.debug(f"Camelot extracted table {i} from page {table.page}")
-        except Exception as e:
-            logger.warning(f"Camelot table extraction failed: {e}")
+        # 1. Determine target pages from structure
+        structure = self._analyze_structure()
+        for section in structure.values():
+            if section.get('found') and section.get('page'):
+                target_pages.append(section['page'])
         
-        # Method 2: Tabula (alternative method, requires Java)
-        import shutil
-        if shutil.which("java"):
-            try:
-                tables_tabula = tabula.read_pdf(
-                    str(self.pdf_path),
-                    pages='all',
-                    multiple_tables=True
-                )
-                
-                for i, df in enumerate(tables_tabula):
-                    if not df.empty:
-                        all_tables.append({
-                            'method': 'tabula',
-                            'table_id': len(all_tables),
-                            'data': df.to_dict('records'),
-                            'dataframe': df
-                        })
-                        logger.debug(f"Tabula extracted table {i}")
-            except Exception as e:
-                logger.warning(f"Tabula table extraction failed (ensure Java is installed): {e}")
-        else:
-            logger.debug("Java not found. Skipping Tabula table extraction.")
-        
-        # Method 3: pdfplumber (for simple tables)
+        # Add surrounding pages just in case
+        extra_pages = []
+        for p in target_pages:
+            extra_pages.extend([p+1, p+2])
+        target_pages = sorted(list(set(target_pages + extra_pages)))
+        target_pages_str = ",".join(map(str, target_pages)) if target_pages else "1-5" # Default to first 5 if none found
+
+        logger.info(f"Targeting table extraction on pages: {target_pages or 'default 1-5'}")
+
+        # Method 1: pdfplumber (Fastest & Lightest - Use for ALL pages)
         try:
             with pdfplumber.open(self.pdf_path) as pdf:
                 for page_num, page in enumerate(pdf.pages):
+                    # Only check first 20 pages or target pages to save memory on huge PDFs
+                    if page_num > 20 and (page_num + 1) not in target_pages:
+                        continue
+                        
                     tables = page.extract_tables()
                     for i, table in enumerate(tables):
                         if table:
@@ -239,13 +212,31 @@ class PDFParser:
                                 'method': 'pdfplumber',
                                 'table_id': len(all_tables),
                                 'page': page_num + 1,
-                                'data': table,
-                                'raw': table
+                                'data': table
                             })
-                            logger.debug(f"pdfplumber extracted table from page {page_num + 1}")
         except Exception as e:
             logger.warning(f"pdfplumber table extraction failed: {e}")
-        
+
+        # Method 2: Camelot (Only on TARGET pages)
+        if target_pages:
+            try:
+                tables_camelot = camelot.read_pdf(
+                    str(self.pdf_path),
+                    pages=target_pages_str,
+                    flavor='stream' # 'stream' is generally faster than 'lattice'
+                )
+                
+                for i, table in enumerate(tables_camelot):
+                    all_tables.append({
+                        'method': 'camelot',
+                        'table_id': len(all_tables),
+                        'page': table.page,
+                        'data': table.df.to_dict('records'),
+                        'dataframe': table.df
+                    })
+            except Exception as e:
+                logger.warning(f"Targeted Camelot extraction failed: {e}")
+
         logger.info(f"Total tables extracted: {len(all_tables)}")
         return all_tables
     

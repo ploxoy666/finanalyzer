@@ -121,7 +121,10 @@ def process_file():
             try:
                 analyzer = SentimentAnalyzer(api_key=hf_token)
                 sentiment_result = analyzer.analyze_report(extracted_data['pages'])
-                st.toast(f"Sentiment: {sentiment_result['dominant_sentiment'].title()}", icon="🧠")
+                if sentiment_result.get('dominant_sentiment'):
+                    st.toast(f"Sentiment: {sentiment_result['dominant_sentiment'].title()}", icon="🧠")
+                else:
+                    st.warning("⚠️ FinBERT skipped: Local execution disabled on Cloud to prevent crash. Provide a Hugging Face Token in Settings.")
             except Exception as e:
                 st.error(f"FinBERT Error: {e}")
 
