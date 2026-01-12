@@ -35,24 +35,13 @@ class MarketDataProvider:
             
         return None
 
-    @staticmethod
-    def _get_session():
-        """Create a custom session with a user-agent to bypass some scraper blocks."""
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'en-US,en;q=0.9',
-        })
-        return session
 
     @staticmethod
     def fetch_data(ticker: str) -> Dict:
         """Fetch market data for a given ticker with robust fallbacks."""
         logger.info(f"Fetching market data for {ticker}...")
         try:
-            session = MarketDataProvider._get_session()
-            stock = yf.Ticker(ticker, session=session)
+            stock = yf.Ticker(ticker)
             
             # Try to get info safely
             info = {}
@@ -97,8 +86,7 @@ class MarketDataProvider:
         """Fetch historical data and calculate technical indicators."""
         logger.info(f"Fetching historical data for {ticker} ({period})...")
         try:
-            session = MarketDataProvider._get_session()
-            stock = yf.Ticker(ticker, session=session)
+            stock = yf.Ticker(ticker)
             df = stock.history(period=period)
             if df.empty:
                 return pd.DataFrame()
