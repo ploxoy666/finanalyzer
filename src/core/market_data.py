@@ -36,25 +36,57 @@ class MarketDataProvider:
         return None
 
     @staticmethod
+    def _get_session():
+        """Create a custom session with a user-agent to bypass some scraper blocks."""
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9',
+        })
+        return session
+
+    @staticmethod
     def fetch_data(ticker: str) -> Dict:
-        """Fetch market data for a given ticker."""
+        """Fetch market data for a given ticker with robust fallbacks."""
         logger.info(f"Fetching market data for {ticker}...")
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
+            session = MarketDataProvider._get_session()
+            stock = yf.Ticker(ticker, session=session)
             
-            # Get latest price (handle different Yahoo info structures)
-            current_price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+            # Try to get info safely
+            info = {}
+            try:
+                info = stock.info
+            except Exception as e:
+                logger.warning(f"Could not fetch full info for {ticker}, attempting fast_info: {e}")
             
+            # 1. Price Fallback Chain
+            current_price = info.get('currentPrice') or info.get('regularMarketPrice')
+            
+            if not current_price:
+                # Fallback to history if info is blocked (common on Streamlit Cloud)
+                hist = stock.history(period="1d")
+                if not hist.empty:
+                    current_price = hist['Close'].iloc[-1]
+            
+            # 2. Shares Fallback
+            shares = info.get('sharesOutstanding')
+            if not shares and hasattr(stock, 'fast_info'):
+                try:
+                    shares = stock.fast_info.get('shares_outstanding')
+                except:
+                    pass
+
             return {
                 'ticker': ticker,
                 'current_price': current_price,
-                'shares_outstanding': info.get('sharesOutstanding'),
-                'market_cap': info.get('marketCap'),
-                'forward_pe': info.get('forwardPE'),
+                'shares_outstanding': shares,
+                'market_cap': info.get('marketCap') or (current_price * shares if current_price and shares else None),
+                'forward_pe': info.get('forwardPE') or info.get('trailingPE'),
                 'dividend_yield': info.get('dividendYield'),
                 'currency': info.get('currency', 'USD'),
-                'long_name': info.get('longName', ticker)
+                'long_name': info.get('longName') or info.get('shortName') or ticker
             }
         except Exception as e:
             logger.error(f"Error fetching data for {ticker}: {e}")
@@ -65,7 +97,8 @@ class MarketDataProvider:
         """Fetch historical data and calculate technical indicators."""
         logger.info(f"Fetching historical data for {ticker} ({period})...")
         try:
-            stock = yf.Ticker(ticker)
+            session = MarketDataProvider._get_session()
+            stock = yf.Ticker(ticker, session=session)
             df = stock.history(period=period)
             if df.empty:
                 return pd.DataFrame()
