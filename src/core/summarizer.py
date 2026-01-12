@@ -39,6 +39,13 @@ class FinancialSummarizer:
 
     def _load_local_model(self):
         """Lazy load local summarization pipeline."""
+        # Safety check for Streamlit Cloud
+        is_streamlit_cloud = os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud" or os.environ.get("HOSTNAME", "").startswith("streamlit")
+        
+        if is_streamlit_cloud and not self.api_key:
+            logger.warning("Running on Streamlit Cloud without API key. Skipping local BART summarizer to prevent crash.")
+            return
+
         if not self.local_pipeline and TRANSFORMERS_AVAILABLE:
             logger.info(f"Loading local summarization model: {self.SUMMARY_MODEL}")
             try:
