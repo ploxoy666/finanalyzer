@@ -218,30 +218,37 @@ class PDFParser:
         except Exception as e:
             logger.warning(f"pdfplumber table extraction failed: {e}")
 
-        # Method 2: Camelot (Only on TARGET pages, and NOT on Streamlit Cloud)
-        # Streamlit Cloud has 1GB RAM limit. Camelot + Ghostscript can easily exceed this on 10+ pages.
-        is_streamlit_cloud = os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud" or os.environ.get("HOSTNAME", "").startswith("streamlit")
-        
-        if target_pages and not is_streamlit_cloud:
-            try:
-                tables_camelot = camelot.read_pdf(
-                    str(self.pdf_path),
-                    pages=target_pages_str,
-                    flavor='stream' # 'stream' is generally faster than 'lattice'
-                )
-                
-                for i, table in enumerate(tables_camelot):
-                    all_tables.append({
-                        'method': 'camelot',
-                        'table_id': len(all_tables),
-                        'page': table.page,
-                        'data': table.df.to_dict('records'),
-                        'dataframe': table.df
-                    })
-            except Exception as e:
-                logger.warning(f"Targeted Camelot extraction failed: {e}")
-        elif is_streamlit_cloud:
-            logger.info("Skipping Camelot table extraction on Streamlit Cloud to preserve memory.")
+        # Method 2: Camelot (Optimized for Low RAM)
+        # We process pages sequentially with garbage collection to avoid OOM on Streamlit Cloud.
+        if target_pages:
+            import gc
+            logger.info(f"Attempting Camelot extraction on {len(target_pages)} pages (sequential)...")
+            
+            for p in target_pages:
+                try:
+                    # Read ONE page at a time
+                    tables_camelot = camelot.read_pdf(
+                        str(self.pdf_path),
+                        pages=str(p),
+                        flavor='stream', 
+                        suppress_stdout=True
+                    )
+                    
+                    for table in tables_camelot:
+                        all_tables.append({
+                            'method': 'camelot',
+                            'table_id': len(all_tables),
+                            'page': table.page,
+                            'data': table.df.to_dict('records'),
+                            'dataframe': table.df
+                        })
+                    
+                    # Cleanup immediately to free RAM
+                    del tables_camelot
+                    gc.collect()
+                    
+                except Exception as e:
+                    logger.warning(f"Camelot extraction skipped for page {p}: {e}")
 
         logger.info(f"Total tables extracted: {len(all_tables)}")
         return all_tables
