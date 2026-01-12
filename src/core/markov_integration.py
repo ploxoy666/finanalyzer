@@ -29,11 +29,10 @@ def run_markov_chain_analysis(ticker, period="2y", n_states=5, method="returns",
     Runs the Markov Chain analysis and captures console output and plots.
     """
     if not MARKOV_AVAILABLE:
-        return "Markov Chain modules not found. Check project structure.", []
+        return "Markov Chain modules not found. Check project structure.", None, None, None, None, None
 
     results_output = io.StringIO()
-    figs = []
-
+    
     with redirect_stdout(results_output):
         try:
             print(f"🚀 INITIALIZING MARKOV CHAIN ANALYSIS FOR {ticker}")
@@ -44,7 +43,7 @@ def run_markov_chain_analysis(ticker, period="2y", n_states=5, method="returns",
             fetcher = StockDataFetcher(ticker, period=period)
             if not fetcher.fetch_data():
                 print(f"Error: Could not fetch data for {ticker}")
-                return results_output.getvalue(), []
+                return results_output.getvalue(), None, None, None, None, None
             
             data = fetcher.preprocess()
             stats = fetcher.get_summary_statistics()
@@ -88,27 +87,9 @@ def run_markov_chain_analysis(ticker, period="2y", n_states=5, method="returns",
                 last_day = predictions['daily_predictions'][-1]
                 print(f"Final Day Expected Price: ${last_day['expected_price']:.2f} ({ (last_day['expected_price']/stats['current_price']-1)*100:+.2f}%)")
 
-            # 4. Visualizations (Capture them)
-            # We use a custom visualizer that handles the data
+            # 4. Visualizations
             viz = StockVisualizer(data, ticker)
             
-            # Helper to capture matplotlib figures
-            def capture_plot(plot_func, *args, **kwargs):
-                plt.figure(figsize=(12, 6))
-                plot_func(*args, **kwargs)
-                fig = plt.gcf()
-                figs.append(fig)
-                # We don't call plt.close() here to let Streamlit handle it or we close after capturing
-                # Actually, StockVisualizer methods call plt.show() which might clear the figure or block
-                # Since we use 'Agg' backend, plt.show() is a no-op but it might trigger internals.
-            
-            # Note: StockVisualizer methods in the user's app call plt.subplots internally.
-            # I should wrap them carefully.
-            
-            # Since I can't easily modify the original visualizer code to return figs without editing it,
-            # I will use st.pyplot after each call in the UI layer if I can.
-            # But the 'Console View' also expects some text.
-
             print("\n" + "="*60)
             print("ANALYSIS COMPLETE")
             print("="*60)
@@ -119,5 +100,5 @@ def run_markov_chain_analysis(ticker, period="2y", n_states=5, method="returns",
             print(f"\n❌ ERROR during analysis: {e}")
             import traceback
             traceback.print_exc(file=results_output)
-            return results_output.getvalue(), None
+            return results_output.getvalue(), None, None, None, None, None
 
