@@ -152,7 +152,7 @@ class ReportGenerator:
         doc = SimpleDocTemplate(
             output_path,
             pagesize=letter,
-            rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
+            rightMargin=24, leftMargin=24, topMargin=36, bottomMargin=36
         )
         
         doc.addPageTemplates([template_portrait, template_landscape])
@@ -1225,25 +1225,25 @@ class ReportGenerator:
             ["PV of FCF"] + [f"{y.pv_of_fcf/1e6:,.0f}" for y in dcf.forecast_period_fcf]
         ]
         
-        # Calculate column widths to fit landscape (10 inches available)
-        total_width = 9.2 * inch # Reduced width to ensure it fits with margins
+        # Calculate column widths to fit landscape (10.5 inches available with reduced margins)
+        total_width = 10.3 * inch 
         num_cols = len(dcf.forecast_period_fcf)
         # Weight first column less to give more room to years
-        unit_width = total_width / (1.3 + num_cols)
+        unit_width = total_width / (1.2 + num_cols)
         
-        t1 = Table(projected_data, colWidths=[unit_width*1.3] + [unit_width]*num_cols, hAlign='CENTER')
+        t1 = Table(projected_data, colWidths=[unit_width*1.2] + [unit_width]*num_cols, hAlign='CENTER')
         t1.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BACKGROUND', (0, 0), (-1, 0), self.colors['navy']),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
             ('GRID', (0, 0), (-1, -1), 0.25, self.colors['border_grey']),
-            ('FONTSIZE', (0, 0), (-1, -1), 7), # Slightly smaller font for density
+            ('FONTSIZE', (0, 0), (-1, -1), 6.5), # Smaller font for density
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'), 
             ('LINEBELOW', (0, -2), (-1, -2), 1, self.colors['charcoal']),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, self.colors['light_grey']]),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
         ]))
         story.append(t1)
         story.append(Spacer(1, 0.15*inch))
