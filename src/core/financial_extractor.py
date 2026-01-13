@@ -355,6 +355,8 @@ class FinancialExtractor:
                 
                 val_raw = matches[0] 
                 parts = val_raw.strip().split()
+                if len(parts) > 1:
+                    val_str = parts[0]  # First column is usually current year
                 else:
                     val_str = val_raw
                 
