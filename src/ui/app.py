@@ -23,6 +23,26 @@ def main():
     # 2. Apply Styles
     apply_custom_css()
     
+    # 3. Session State Initialization
+    if "app_mode" not in st.session_state:
+        st.session_state.app_mode = AnalysisMode.QUICK_PULSE
+    if "analysis_complete" not in st.session_state:
+        st.session_state.analysis_complete = False
+    if "model" not in st.session_state:
+        st.session_state.model = None
+    if "report_path" not in st.session_state:
+        st.session_state.report_path = None
+    if "market_data" not in st.session_state:
+        st.session_state.market_data = None
+    
+    # AI States
+    if "ai_summary" not in st.session_state:
+        st.session_state.ai_summary = None
+    if "ai_risks" not in st.session_state:
+        st.session_state.ai_risks = []
+    if "ai_sentiment" not in st.session_state:
+        st.session_state.ai_sentiment = None
+    
     # 3. Sidebar Navigation
     render_sidebar()
     
