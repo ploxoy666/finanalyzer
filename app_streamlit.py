@@ -494,7 +494,7 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                 for i, row in df_raw.head(20).iterrows():
                     row_str = row.astype(str).str.lower().values
                     # Keywords that suggest this is the header row
-                    if any(x in row_str for x in ['revenue', 'year', 'description', 'item', 'particulars', 'period']):
+                    if any(x in row_str for x in ['revenue', 'year', 'description', 'item', 'particulars', 'period', 'наименование', 'показатель', 'статья', 'код']):
                         header_row_idx = i
                         break
                 
@@ -531,7 +531,7 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                         if df_upload[col].dtype == object:
                             # Check if column has financial keywords
                             sample = df_upload[col].astype(str).str.lower().str.cat(sep=' ')
-                            if 'revenue' in sample or 'income' in sample or 'total' in sample:
+                            if 'revenue' in sample or 'income' in sample or 'total' in sample or 'выручка' in sample or 'доход' in sample:
                                 label_col = col
                                 break
                     
@@ -542,7 +542,7 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                     
                     for col in df_upload.columns:
                         c_lower = col.lower()
-                        if any(x in c_lower for x in ['actual', 'current', 'amount', 'total', '202', '201']):
+                        if any(x in c_lower for x in ['actual', 'current', 'amount', 'total', '202', '201', 'сумма', 'значение']):
                             value_col = col
                             break
                     
@@ -571,12 +571,12 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                         return 0.0
 
                     # Terms to search for
-                    rev = extract_val(['revenue', 'sales', 'turnover', 'total income'])
-                    ni = extract_val(['net income', 'profit', 'surplus', 'deficit', 'comprehensive income'])
-                    assets = extract_val(['total assets', 'non-current assets'])
-                    liab = extract_val(['total liabilities', 'current liabilities'])
-                    cash = extract_val(['cash', 'bank balance'])
-                    op_exp_row = extract_val(['total expenses', 'operating expenses'])
+                    rev = extract_val(['revenue', 'sales', 'turnover', 'total income', 'выручка', 'доход от реализации', 'продажи', 'общий доход'])
+                    ni = extract_val(['net income', 'profit', 'surplus', 'deficit', 'comprehensive income', 'чистая прибыль', 'прибыль за год', 'итого совокупный доход', 'убыток'])
+                    assets = extract_val(['total assets', 'non-current assets', 'итого активов', 'активы', 'баланс'])
+                    liab = extract_val(['total liabilities', 'current liabilities', 'обязательства', 'пассивы', 'долги'])
+                    cash = extract_val(['cash', 'bank balance', 'денежные средства', 'деньги', 'касса'])
+                    op_exp_row = extract_val(['total expenses', 'operating expenses', 'расходы', 'себестоимость', 'затраты'])
                     
                     # If we found nothing, maybe the file is transposed? (Skip for now, simplistic)
                     
