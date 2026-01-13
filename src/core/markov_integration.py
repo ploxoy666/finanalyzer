@@ -59,10 +59,10 @@ def run_markov_chain_analysis(ticker, period="2y", n_states=5, method="returns",
             print(discretizer.describe_states())
 
             mc1 = MarkovChain(order=1)
-            mc1.fit(states)
+            mc1.fit(states, n_states=n_states)
             
             mc2 = MarkovChain(order=2)
-            mc2.fit(states)
+            mc2.fit(states, n_states=n_states)
             
             ensemble = EnsembleMarkovModel()
             ensemble.add_model(mc1)

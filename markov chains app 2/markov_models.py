@@ -24,15 +24,25 @@ class MarkovChain:
         self.state_space = None
         self.n_states = 0
         
-    def fit(self, states):
+    def fit(self, states, n_states=None):
         """
         Fit the Markov chain to state sequence
         
         Args:
             states (np.array): Array of state observations
+            n_states (int, optional): Total number of states (if known)
         """
-        self.state_space = np.unique(states)
-        self.n_states = len(self.state_space)
+        if n_states is not None:
+             self.n_states = n_states
+             self.state_space = np.arange(n_states)
+        else:
+             self.state_space = np.unique(states)
+             # Fix: Use max value + 1 to ensure matrix covers all potential indices 
+             # even if some intermediate states are missing in the sample
+             if np.issubdtype(states.dtype, np.integer):
+                 self.n_states = int(np.max(states) + 1)
+             else:
+                 self.n_states = len(self.state_space)
         
         # Initialize transition matrix
         if self.order == 1:

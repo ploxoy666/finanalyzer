@@ -277,5 +277,13 @@ def render_market_pulse():
                         fig_m.update_layout(template="plotly_dark", height=300, title="Expected Price Trajectory", margin=dict(l=20, r=20, t=40, b=20))
                         st.plotly_chart(fig_m, use_container_width=True)
                 
-                with st.expander("Show Analysis Logs"):
-                    st.text(res['logs'])
+                # Run Configuration Summary (Cleaner UI)
+                st.caption("Analysis Configuration")
+                conf = res.get('config', {})
+                cfg_col1, cfg_col2, cfg_col3 = st.columns(3)
+                cfg_col1.markdown(f"**Period:** {conf.get('period', 'N/A')}")
+                cfg_col2.markdown(f"**States:** {m_states}") # Current slider value
+                cfg_col3.markdown(f"**Method:** {m_method}") # Current select value
+                
+                with st.expander("🛠️ View Debug Logs", expanded=False):
+                    st.code(res['logs'], language="text")
