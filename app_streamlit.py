@@ -539,13 +539,13 @@ if st.session_state.analysis_complete and st.session_state.model:
     with col4:
         st.metric("Forecast Growth", f"Base Case", delta=f"{forecast_years} Years")
         
-    # 2. Market Context (Extra Cards if available)
-    if st.session_state.market_data:
+    # 2. Market Context (Extra Cards if available and has full data)
+    if st.session_state.market_data and 'long_name' in st.session_state.market_data:
         mkt = st.session_state.market_data
-        st.info(f"💹 **Live Market Data:** {mkt['long_name']} ({mkt['ticker']})")
+        st.info(f"💹 **Live Market Data:** {mkt['long_name']} ({mkt.get('ticker', 'N/A')})")
         m2_col1, m2_col2, m2_col3, m2_col4 = st.columns(4)
         with m2_col1:
-            st.metric("Price", f"${mkt['current_price']:,.2f}", delta=mkt['currency'])
+            st.metric("Price", f"${mkt.get('current_price', 0):,.2f}", delta=mkt.get('currency', 'USD'))
         with m2_col2:
             mcap = mkt.get('market_cap')
             mcap_str = f"${mcap/1e9:,.1f}B" if mcap else "N/A"
@@ -554,7 +554,8 @@ if st.session_state.analysis_complete and st.session_state.model:
             upside = model.upside_potential or 0
             st.metric("Target Price", f"${model.target_price:,.2f}", delta=f"{upside:+.1%}")
         with m2_col4:
-            st.metric("Forward P/E", f"{mkt['forward_pe']:.1f}x" if mkt['forward_pe'] else "N/A")
+            fpe = mkt.get('forward_pe')
+            st.metric("Forward P/E", f"{fpe:.1f}x" if fpe else "N/A")
 
     # 3. Recommendation Card
     rec_colors = {"BUY": "green", "HOLD": "orange", "SELL": "red"}
