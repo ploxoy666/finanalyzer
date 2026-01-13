@@ -86,7 +86,9 @@ def _process_file_upload(uploaded_file):
                 
                 # 3. Extract Financials
                 status.write("🔢 Identifying financial statements...")
-                extractor = FinancialExtractor(data['pages'])
+                # Fix: FinancialExtractor expects Dict[int, str], but parser returns List[str]
+                pages_dict = {i: p for i, p in enumerate(data['pages'])}
+                extractor = FinancialExtractor(pages_dict)
                 statements = extractor.extract()
                 
                 # 4. Build Model
@@ -141,12 +143,43 @@ def _render_dashboard(model):
     latest_inc = model.historical_income_statements[-1]
     forecast_inc = model.forecast_income_statements[0]
     
+    # Metrics Calculation
+    rev_growth = 0.0
+    if len(model.historical_income_statements) > 1:
+        prev_rev = model.historical_income_statements[-2].revenue
+        if prev_rev and prev_rev > 0:
+            rev_growth = (latest_inc.revenue - prev_rev) / prev_rev
+
+    # Calculate margins safely
+    gross_margin = (latest_inc.gross_profit / latest_inc.revenue) if latest_inc.revenue else 0.0
+    op_margin = (latest_inc.operating_income / latest_inc.revenue) if latest_inc.revenue else 0.0
+    net_margin = (latest_inc.net_income / latest_inc.revenue) if latest_inc.revenue else 0.0
+
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Revenue (TTM)", f"${latest_inc.revenue/1e9:,.1f}B", 
-              f"{(forecast_inc.revenue - latest_inc.revenue)/latest_inc.revenue:.1%}")
-    m2.metric("Gross Margin", f"{latest_inc.gross_margin:.1%}")
-    m3.metric("Operating Margin", f"{latest_inc.operating_margin:.1%}")
-    m4.metric("Implied Share Price", f"${model.dcf_valuation.implied_price_per_share:,.2f}")
+    m1.metric("Revenue (TTM)", f"${latest_inc.revenue/1e9:.1f}B", f"{rev_growth:+.1%}")
+    m2.metric("Gross Margin", f"{gross_margin:.1%}")
+    m3.metric("Operating Margin", f"{op_margin:.1%}")
+    m4.metric("Net Margin", f"{net_margin:.1%}")
+    
+    st.markdown("---")
+    
+    # AI Summary Card (Styled for visibility)
+    if st.session_state.get("ai_summary"): # Changed from model.ai_summary to st.session_state.get("ai_summary") to match existing logic
+        st.markdown(f"""
+        <div style="
+            padding: 20px; 
+            background-color: rgba(30, 41, 59, 1); 
+            border: 1px solid #334155; 
+            border-radius: 10px; 
+            margin-bottom: 20px;
+            color: #e2e8f0;
+        ">
+            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Key Findings</h3>
+            <div style="font-size: 1.05em; line-height: 1.6;">
+                {st.session_state.ai_summary}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Charts (Placeholder for now, can add Plotly later)
     st.info("Visualizations are generated in the Report tab.")
