@@ -169,15 +169,66 @@ def _render_dashboard(model):
     net_margin = (latest_inc.net_income / latest_inc.revenue) if latest_inc.revenue else 0.0
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Revenue (TTM)", f"${latest_inc.revenue/1e9:.1f}B", f"{rev_growth:+.1%}")
+    m1.metric("Revenue (TTM)", _format_metric(latest_inc.revenue), f"{rev_growth:+.1%}")
     m2.metric("Gross Margin", f"{gross_margin:.1%}")
     m3.metric("Operating Margin", f"{op_margin:.1%}")
     m4.metric("Net Margin", f"{net_margin:.1%}")
     
     st.markdown("---")
     
-    # Charts (Placeholder for now, can add Plotly later)
-    st.info("Visualizations are generated in the Report tab.")
+    # Charts Section
+    st.subheader("Financial Trends")
+    
+    if len(model.historical_income_statements) > 0:
+        hist_data = {
+            "Year": [s.period_end.year for s in model.historical_income_statements],
+            "Revenue": [s.revenue for s in model.historical_income_statements],
+            "Net Income": [s.net_income for s in model.historical_income_statements],
+            "Operating Income": [s.operating_income for s in model.historical_income_statements]
+        }
+        df_chart = pd.DataFrame(hist_data)
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df_chart['Year'], 
+            y=df_chart['Revenue'], 
+            name='Revenue',
+            marker_color='#3b82f6'
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_chart['Year'], 
+            y=df_chart['Net Income'], 
+            name='Net Income',
+            mode='lines+markers',
+            line=dict(color='#22c55e', width=3)
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=20, r=20, t=20, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=350
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Insufficient historical data for visualization.")
+
+    
+def _format_metric(value):
+    """Format large numbers adaptively (K, M, B)."""
+    if value is None:
+        return "N/A"
+    abs_val = abs(value)
+    if abs_val >= 1e9:
+        return f"${value/1e9:.1f}B"
+    elif abs_val >= 1e6:
+        return f"${value/1e6:.1f}M"
+    elif abs_val >= 1e3:
+        return f"${value/1e3:.1f}K"
+    else:
+        return f"${value:,.0f}"
 
 def _render_financials(model):
     """Render Financials tab with forecast controls."""
@@ -208,9 +259,9 @@ def _render_financials(model):
         
         rows.append({
             "Year": inc.period_end.year,
-            "Revenue": f"${inc.revenue:,.0f}",
+            "Revenue": _format_metric(inc.revenue),
             "Growth": f"{growth:.1%}",
-            "Net Income": f"${inc.net_income:,.0f}"
+            "Net Income": _format_metric(inc.net_income)
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
@@ -228,8 +279,8 @@ def _render_valuation(model):
     c1.metric("Terminal Growth", f"{term_growth:.1%}")
     
     if dcf:
-        c2.metric("Enterprise Value", f"${dcf.enterprise_value:,.0f}")
-        c2.metric("Equity Value", f"${dcf.equity_value:,.0f}")
+        c2.metric("Enterprise Value", _format_metric(dcf.enterprise_value))
+        c2.metric("Equity Value", _format_metric(dcf.equity_value))
         st.metric("Implied Price per Share", f"${dcf.implied_price_per_share:,.2f}")
     else:
         st.warning("DCF Valuation could not be computed.")
@@ -261,8 +312,12 @@ def _render_report_generation(model):
     
     if st.button("Generate Comprehensive Investment Memo"):
         with st.spinner("Generating PDF..."):
+            import io
+            pdf_buffer = io.BytesIO()
+            
             generator = ReportGenerator(model)
-            pdf_data = generator.generate_pdf()
+            generator.generate_pdf(pdf_buffer)
+            pdf_data = pdf_buffer.getvalue()
             
             st.success("Report Generated!")
             st.download_button(
