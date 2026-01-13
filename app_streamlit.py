@@ -422,6 +422,9 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                 fc_engine = ForecastEngine(linked_model)
                 final_model = fc_engine.forecast(years=forecast_years, assumptions=assumptions)
                 
+                # 3.1 Force DCF Calculation for Base Case
+                final_model = fc_engine.generate_investment_advice(sentiment_result=None)
+                
                 # 4. Reverse DCF
                 reverse_dcf = fc_engine.calculate_reverse_dcf(p_target_val, p_target_irr)
                 final_model.reverse_dcf = reverse_dcf
@@ -461,36 +464,37 @@ else:
 
 # --- SENSITIVITY SIDEBAR ---
 if st.session_state.analysis_complete and st.session_state.model and (st.session_state.app_mode == "📄 Deep Report Intelligence" or st.session_state.app_mode == "🦄 Private / Startup Valuator"):
-    with st.sidebar:
-        st.header("⚡ Sensitivity Analysis")
-        st.write("Stress-test the valuation by adjusting key drivers.")
-        
-        orig_growth = st.session_state.model.assumptions.revenue_growth_rate
-        orig_wacc = st.session_state.model.dcf_valuation.wacc_used
-        
-        new_growth = st.slider("Revenue Growth (%)", -10.0, 50.0, float(orig_growth*100), 1.0) / 100
-        new_wacc = st.slider("Discount Rate (WACC %)", 4.0, 20.0, float(orig_wacc*100), 0.5) / 100
-        
-        if st.button("🔄 Recalculate DCF"):
-            # Update assumptions and re-forecast
-            from src.core.forecast_engine import ForecastEngine
-            st.session_state.model.assumptions.revenue_growth_rate = new_growth
-            st.session_state.model.assumptions.wacc = new_wacc
+    if st.session_state.model.dcf_valuation:
+        with st.sidebar:
+            st.header("⚡ Sensitivity Analysis")
+            st.write("Stress-test the valuation by adjusting key drivers.")
             
-            # Re-run forecast engine
-            engine = ForecastEngine(st.session_state.model)
-            # Clear previous forecasts
-            st.session_state.model.forecast_income_statements = []
-            st.session_state.model.forecast_balance_sheets = []
-            st.session_state.model.forecast_cash_flows = []
-            st.session_state.model.forecast_ratios = []
+            orig_growth = st.session_state.model.assumptions.revenue_growth_rate
+            orig_wacc = st.session_state.model.dcf_valuation.wacc_used
             
-            # Generate new forecast and recalculate DCF/Advice
-            st.session_state.model = engine.forecast(years=forecast_years)
-            st.session_state.model = engine.generate_investment_advice(sentiment_result=st.session_state.sentiment)
+            new_growth = st.slider("Revenue Growth (%)", -10.0, 50.0, float(orig_growth*100), 1.0) / 100
+            new_wacc = st.slider("Discount Rate (WACC %)", 4.0, 20.0, float(orig_wacc*100), 0.5) / 100
             
-            st.toast("Valuation Updated!", icon="📊")
-            st.rerun()
+            if st.button("🔄 Recalculate DCF"):
+                # Update assumptions and re-forecast
+                from src.core.forecast_engine import ForecastEngine
+                st.session_state.model.assumptions.revenue_growth_rate = new_growth
+                st.session_state.model.assumptions.wacc = new_wacc
+                
+                # Re-run forecast engine
+                engine = ForecastEngine(st.session_state.model)
+                # Clear previous forecasts
+                st.session_state.model.forecast_income_statements = []
+                st.session_state.model.forecast_balance_sheets = []
+                st.session_state.model.forecast_cash_flows = []
+                st.session_state.model.forecast_ratios = []
+                
+                # Generate new forecast and recalculate DCF/Advice
+                st.session_state.model = engine.forecast(years=forecast_years)
+                st.session_state.model = engine.generate_investment_advice(sentiment_result=st.session_state.sentiment)
+                
+                st.toast("Valuation Updated!", icon="📊")
+                st.rerun()
 
 if st.session_state.analysis_complete and st.session_state.model:
     model = st.session_state.model
