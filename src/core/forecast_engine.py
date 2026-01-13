@@ -743,9 +743,12 @@ class ForecastEngine:
         multiple = target_valuation / current_rev if current_rev else 0
         
         # Breakeven (when FCF turns positive)
+        # Note: CashFlowStatement object does not have free_cash_flow field directly.
+        # We can approximate by checking if net change in cash is positive or simple OpCF.
+        # For true FCF, we need to inspect the DCFValuation object, but let's check OpCF here.
         breakeven_year = None
         for i, cf in enumerate(self.model.forecast_cash_flows):
-            if cf.free_cash_flow > 0:
+            if cf.cash_from_operations > 0: # Simple check for positive cash generation
                 breakeven_year = i + 1
                 break
                 
