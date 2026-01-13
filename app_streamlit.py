@@ -746,52 +746,54 @@ if st.session_state.analysis_complete and st.session_state.model:
     if t_markov:
         with t_markov:
             if MARKOV_AVAILABLE:
-            st.subheader("🔮 Probabilistic Price Prediction")
-            m_ticker = st.text_input("Refine Ticker for Markov Analysis", value=model.ticker or "")
-            
-            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            with m_col1:
-                m_period = st.selectbox("History Period", ["1y", "2y", "5y", "10y"], index=1)
-            with m_col2:
-                m_states = st.selectbox("Complexity (States)", [3, 5, 7, 10], index=1)
-            with m_col3:
-                m_method = st.selectbox("Method", ["returns", "std_dev"], index=0)
-            with m_col4:
-                m_days = st.slider("Forecast (Days)", 1, 30, 5)
+                st.subheader("🔮 Probabilistic Price Prediction")
+                m_ticker = st.text_input("Refine Ticker for Markov Analysis", value=model.ticker or "")
                 
-            if st.button("🔮 Run Markov Simulation"):
-                with st.spinner("Calculating state transitions..."):
-                    m_out, m_preds, m_data, m_viz, m_discretizer, m_mc = run_markov_chain_analysis(
-                        m_ticker, period=m_period, n_states=m_states, method=m_method, n_days=m_days
-                    )
-                    st.session_state.markov_results = (m_out, m_preds, m_data, m_viz, m_discretizer, m_mc)
-                    st.rerun()
+                m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                with m_col1:
+                    m_period = st.selectbox("History Period", ["1y", "2y", "5y", "10y"], index=1)
+                with m_col2:
+                    m_states = st.selectbox("Complexity (States)", [3, 5, 7, 10], index=1)
+                with m_col3:
+                    m_method = st.selectbox("Method", ["returns", "std_dev"], index=0)
+                with m_col4:
+                    m_days = st.slider("Forecast (Days)", 1, 30, 5)
+                    
+                if st.button("🔮 Run Markov Simulation"):
+                    with st.spinner("Calculating state transitions..."):
+                        m_out, m_preds, m_data, m_viz, m_discretizer, m_mc = run_markov_chain_analysis(
+                            m_ticker, period=m_period, n_states=m_states, method=m_method, n_days=m_days
+                        )
+                        st.session_state.markov_results = (m_out, m_preds, m_data, m_viz, m_discretizer, m_mc)
+                        st.rerun()
 
-            if st.session_state.markov_results:
-                console_out, m_preds, m_data, m_viz, m_discretizer, m_mc = st.session_state.markov_results
-                if m_preds:
-                    last_price = m_data['Close'].iloc[-1]
-                    expected_price = m_preds['expected_price']
-                    change_pct = (expected_price / last_price - 1) * 100
-                    st.metric(f"Forecast ({m_days}d)", f"${expected_price:,.2f}", delta=f"{change_pct:+.2f}%")
-                    v_col1, v_col2 = st.columns(2)
-                    # Create figures list for export
-                    m_figs = []
-                    f1 = m_viz.plot_multi_day_prediction(m_preds) if m_days > 1 else m_viz.plot_prediction(m_preds)
-                    f2 = m_viz.plot_transition_matrix(m_mc.transition_matrix, m_discretizer.state_labels)
-                    
-                    with v_col1: st.pyplot(f1)
-                    with v_col2: st.pyplot(f2)
-                    
-                    # Export Utility
-                    render_export_utility(
-                        "Markov Simulation",
-                        f"Probabilistic Forecast: {m_ticker}",
-                        f"{m_days}-Day Price Trajectory & State Transition Matrix",
-                        metrics={"Expected Price": f"${expected_price:,.2f}", "Proj. Change": f"{change_pct:+.2f}%", "Simulation Horizon": f"{m_days} days"},
-                        figures=[f1, f2]
-                    )
-                    plt.close('all')
+                if st.session_state.markov_results:
+                    console_out, m_preds, m_data, m_viz, m_discretizer, m_mc = st.session_state.markov_results
+                    if m_preds:
+                        last_price = m_data['Close'].iloc[-1]
+                        expected_price = m_preds['expected_price']
+                        change_pct = (expected_price / last_price - 1) * 100
+                        st.metric(f"Forecast ({m_days}d)", f"${expected_price:,.2f}", delta=f"{change_pct:+.2f}%")
+                        v_col1, v_col2 = st.columns(2)
+                        # Create figures list for export
+                        m_figs = []
+                        f1 = m_viz.plot_multi_day_prediction(m_preds) if m_days > 1 else m_viz.plot_prediction(m_preds)
+                        f2 = m_viz.plot_transition_matrix(m_mc.transition_matrix, m_discretizer.state_labels)
+                        
+                        with v_col1: st.pyplot(f1)
+                        with v_col2: st.pyplot(f2)
+                        
+                        # Export Utility
+                        render_export_utility(
+                            "Markov Simulation",
+                            f"Probabilistic Forecast: {m_ticker}",
+                            f"{m_days}-Day Price Trajectory & State Transition Matrix",
+                            metrics={"Expected Price": f"${expected_price:,.2f}", "Proj. Change": f"{change_pct:+.2f}%", "Simulation Horizon": f"{m_days} days"},
+                            figures=[f1, f2]
+                        )
+                        plt.close('all')
+            else:
+                st.warning("Markov Chain Analysis dependencies not available. Please install yfinance and pandas.")
 
     if is_report_mode:
         with t_data:
