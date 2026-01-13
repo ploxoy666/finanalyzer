@@ -698,6 +698,65 @@ class ForecastEngine:
             
         return wacc
 
+    def calculate_reverse_dcf(self, target_valuation: float, target_irr: float = 0.25) -> 'ReverseDCFAnalysis':
+        """
+        Perform Reverse DCF to find required growth rate for a target valuation.
+        Iteratively adjusts revenue growth until EV matches target.
+        """
+        logger.info(f"Calculating Reverse DCF for target valuation: ${target_valuation:,.0f}")
+        
+        from ..models.schemas import ReverseDCFAnalysis
+        
+        # Save original assumptions
+        original_growth = self.model.assumptions.revenue_growth_rate
+        
+        # Binary search for growth rate
+        low = -0.5
+        high = 5.0 # Max 500% growth
+        periods = 20
+        required_growth = 0
+        
+        for _ in range(periods):
+            mid = (low + high) / 2
+            self.model.assumptions.revenue_growth_rate = mid
+            
+            # Re-run forecast (simplified, just income needs update mainly)
+            # Full forecast is expensive, maybe just approximation?
+            # For now, let's just trigger a forecast (it's fast enough 5 years)
+            self.forecast(years=self.forecast_years, assumptions=self.model.assumptions)
+            dcf = self._calculate_dcf()
+            
+            if dcf.enterprise_value < target_valuation:
+                low = mid
+            else:
+                high = mid
+            
+            required_growth = mid
+            
+        # Restore original
+        self.model.assumptions.revenue_growth_rate = original_growth
+        # Re-run base case
+        self.forecast(years=self.forecast_years, assumptions=self.model.assumptions)
+        
+        # Calculate implied multiple
+        current_rev = self.model.historical_income_statements[-1].revenue
+        multiple = target_valuation / current_rev if current_rev else 0
+        
+        # Breakeven (when FCF turns positive)
+        breakeven_year = None
+        for i, cf in enumerate(self.model.forecast_cash_flows):
+            if cf.free_cash_flow > 0:
+                breakeven_year = i + 1
+                break
+                
+        return ReverseDCFAnalysis(
+            target_price=target_valuation,
+            required_growth_rate=required_growth,
+            required_margin=self.model.assumptions.net_margin or 0.1, # Approx
+            years_to_breakeven=breakeven_year,
+            implied_arr_multiple=multiple
+        )
+
 # Example usage
 if __name__ == "__main__":
     pass

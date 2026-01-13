@@ -394,3 +394,39 @@ class LinkedModel(BaseModel):
     ai_summary: Optional[str] = None
     ai_risks: Optional[List[str]] = None
     ai_narrative: Optional[str] = None
+    
+    # Private / Startup Specific (NEW)
+    cap_table: Optional['CapTable'] = None
+    reverse_dcf: Optional['ReverseDCFAnalysis'] = None
+
+
+class FundingRound(BaseModel):
+    """Funding round details."""
+    name: str = Field(..., description="e.g. Seed, Series A")
+    date: date
+    pre_money_valuation: float
+    amount_raised: float
+    post_money_valuation: float
+    investors: List[str] = Field(default_factory=list)
+
+class ShareClass(BaseModel):
+    """Equity structure."""
+    name: str = Field(..., description="Common, Preferred A, etc.")
+    shares_issued: float
+    price_per_share: Optional[float] = None
+    liquidation_preference: float = Field(default=1.0)
+    ownership_percentage: Optional[float] = None
+
+class CapTable(BaseModel):
+    """Capitalization table."""
+    rounds: List[FundingRound] = Field(default_factory=list)
+    share_classes: List[ShareClass] = Field(default_factory=list)
+    total_fully_diluted_shares: float
+
+class ReverseDCFAnalysis(BaseModel):
+    """Reverse DCF outputs."""
+    target_price: float
+    required_growth_rate: float
+    required_margin: float
+    years_to_breakeven: Optional[float]
+    implied_arr_multiple: Optional[float]

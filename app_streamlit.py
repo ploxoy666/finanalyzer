@@ -237,6 +237,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+from datetime import date
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/272/272525.png", width=80)
@@ -264,7 +266,7 @@ if "app_mode" not in st.session_state:
 with st.sidebar:
     st.markdown("---")
     st.markdown("### 🛠️ Navigation Mode")
-    mode = st.radio("Choose Analysis Type", ["🔎 Quick Market Pulse", "📄 Deep Report Intelligence"])
+    mode = st.radio("Choose Analysis Type", ["🔎 Quick Market Pulse", "📄 Deep Report Intelligence", "🦄 Private / Startup Valuator"])
     st.session_state.app_mode = mode
 
 if st.session_state.app_mode == "🔎 Quick Market Pulse":
@@ -304,6 +306,271 @@ if st.session_state.app_mode == "🔎 Quick Market Pulse":
         else:
             st.warning("Please enter a ticker symbol.")
 
+elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
+    st.markdown("## 🦄 Startup & Private Company Valuation")
+    st.info("Build professional 3-Statement Models and DCF Valuations from manual drivers - perfect for pre-IPO companies.")
+
+    p_tab1, p_tab2 = st.tabs(["✍️ Driver Inputs", "📂 Excel Upload (Beta)"])
+
+    with p_tab1:
+        with st.form("startup_drivers"):
+            st.markdown("### 🏢 Company Basics")
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                p_company = st.text_input("Company Name", "My Startup Inc")
+                p_rev = st.number_input("Last Year Revenue ($)", min_value=0.0, value=1000000.0, step=100000.0)
+                p_ni = st.number_input("Last Year Net Income ($)", value=100000.0, step=50000.0)
+            with col_p2:
+                p_currency = st.selectbox("Currency", ["USD", "EUR", "GBP"])
+                p_cash = st.number_input("Current Cash Balance ($)", min_value=0.0, value=250000.0)
+                p_debt = st.number_input("Total Debt ($)", min_value=0.0, value=0.0)
+
+            st.markdown("### 📈 Growth & Margin Drivers")
+            col_d1, col_d2, col_d3 = st.columns(3)
+            with col_d1:
+                p_growth = st.slider("Proj. Annual Growth (%)", -20, 200, 25) / 100
+            with col_d2:
+                p_gross_margin = st.slider("Gross Margin (%)", 0, 100, 60) / 100
+            with col_d3:
+                p_op_margin = st.slider("Operating Margin (%)", -50, 50, 15) / 100
+            
+            st.markdown("### 🎯 Valuation Targets (Reverse DCF)")
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                p_target_val = st.number_input("Target Valuation ($)", min_value=0.0, value=10000000.0, step=1000000.0)
+            with col_v2:
+                p_target_irr = st.slider("Target Investor IRR (%)", 10, 50, 25) / 100
+
+            submit_startup = st.form_submit_button("🚀 Generate Valuation Model")
+
+        if submit_startup:
+            with st.spinner("Synthesizing financial model from drivers..."):
+                from src.models.schemas import LinkedModel, ReportType, AccountingStandard, FinancialStatements, IncomeStatement, BalanceSheet, CashFlowStatement, ForecastAssumptions, Currency
+                
+                # 1. Create Baseline Financial Statements (Synthetic)
+                curr_date = date.today()
+                base_is = IncomeStatement(
+                    period_start=date(curr_date.year-1, 1, 1),
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    revenue=p_rev,
+                    cost_of_revenue=p_rev * (1 - p_gross_margin),
+                    gross_profit=p_rev * p_gross_margin,
+                    operating_income=p_rev * p_op_margin,
+                    net_income=p_ni
+                )
+                
+                # Simplified BS
+                base_bs = BalanceSheet(
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    total_assets=p_cash + (p_rev * 0.2), # Approx
+                    cash_and_equivalents=p_cash,
+                    total_liabilities=p_debt,
+                    short_term_debt=0,
+                    long_term_debt=p_debt,
+                    total_shareholders_equity=(p_cash + (p_rev * 0.2)) - p_debt
+                )
+                
+                # Simplified CF
+                base_cf = CashFlowStatement(
+                    period_start=date(curr_date.year-1, 1, 1),
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    net_income=p_ni,
+                    cash_from_operations=p_ni, # simplified
+                    net_change_in_cash=0,
+                    cash_beginning_of_period=p_cash,
+                    cash_end_of_period=p_cash
+                )
+                
+                stmts = FinancialStatements(
+                    company_name=p_company,
+                    fiscal_year=curr_date.year-1,
+                    report_type=ReportType.ANNUAL_REPORT,
+                    accounting_standard=AccountingStandard.GAAP,
+                    currency=p_currency,
+                    income_statements=[base_is],
+                    balance_sheets=[base_bs],
+                    cash_flow_statements=[base_cf]
+                )
+                
+                # 2. Build Model
+                engine = ModelEngine(stmts)
+                linked_model = engine.build_linked_model()
+                
+                # 3. Forecast
+                assumptions = ForecastAssumptions(
+                    revenue_growth_rate=p_growth,
+                    gross_margin=p_gross_margin,
+                    operating_margin=p_op_margin,
+                    tax_rate=0.21,
+                    capex_percent_of_revenue=0.03,
+                    wacc=0.12 # Startup Cost of Capital default
+                )
+                
+                fc_engine = ForecastEngine(linked_model)
+                final_model = fc_engine.forecast(years=forecast_years, assumptions=assumptions)
+                
+                # 4. Reverse DCF
+                reverse_dcf = fc_engine.calculate_reverse_dcf(p_target_val, p_target_irr)
+                final_model.reverse_dcf = reverse_dcf
+                
+                # 5. AI Narrative
+                final_model.ai_summary = f"Generated startup model for {p_company} based on user drivers. Projected growth: {p_growth:.1%}."
+                final_model.investment_thesis = f"Targeting ${p_target_val:,.0f} valuation requires sustaining {reverse_dcf.required_growth_rate:.1%} CAGR."
+                final_model.recommendation = "VC TRACK"
+                
+                st.session_state.model = final_model
+                st.session_state.analysis_complete = True
+                st.session_state.market_data = None # No ticker
+                st.toast("Startup Model Generated!", icon="🦄")
+                st.rerun()
+
+    with p_tab2:
+        st.info("🔜 Excel Upload coming in next update. Use 'Driver Inputs' for now.")
+
+else:
+    st.markdown("Upload an Annual/Quarterly Report (PDF) to generate a full 3-Statement Model with DCF and AI Sentiment Analysis.")
+    uploaded_file = st.file_uploader("Drop PDF here", type=['pdf'])
+    if uploaded_file:
+        if st.button("🚀 Start Deep Analysis", type="primary"):
+            process_file()
+
+
+
+            st.markdown("### 🏢 Company Basics")
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                p_company = st.text_input("Company Name", "My Startup Inc")
+                p_rev = st.number_input("Last Year Revenue ($)", min_value=0.0, value=1000000.0, step=100000.0)
+                p_ni = st.number_input("Last Year Net Income ($)", value=100000.0, step=50000.0)
+                p_shares = st.number_input("Total Shares Outstanding", min_value=1, value=1000000, step=10000)
+            with col_p2:
+                p_currency = st.selectbox("Currency", ["USD", "EUR", "GBP"])
+                p_cash = st.number_input("Current Cash Balance ($)", min_value=0.0, value=250000.0)
+                p_debt = st.number_input("Total Debt ($)", min_value=0.0, value=0.0)
+
+            st.markdown("### 📈 Growth & Margin Drivers")
+            col_d1, col_d2, col_d3 = st.columns(3)
+            with col_d1:
+                p_growth = st.slider("Proj. Annual Growth (%)", -20, 200, 25) / 100
+            with col_d2:
+                p_gross_margin = st.slider("Gross Margin (%)", 0, 100, 60) / 100
+            with col_d3:
+                p_op_margin = st.slider("Operating Margin (%)", -50, 50, 15) / 100
+            
+            st.markdown("### 🎯 Valuation Targets (Reverse DCF)")
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                p_target_val = st.number_input("Target Valuation ($)", min_value=0.0, value=10000000.0, step=1000000.0)
+            with col_v2:
+                p_target_irr = st.slider("Target Investor IRR (%)", 10, 50, 25) / 100
+
+            submit_startup = st.form_submit_button("🚀 Generate Valuation Model")
+
+        if submit_startup:
+            with st.spinner("Synthesizing financial model from drivers..."):
+                from src.models.schemas import LinkedModel, ReportType, AccountingStandard, FinancialStatements, IncomeStatement, BalanceSheet, CashFlowStatement, ForecastAssumptions, Currency
+                
+                # 1. Create Baseline Financial Statements (Synthetic)
+                curr_date = date.today()
+                base_is = IncomeStatement(
+                    period_start=date(curr_date.year-1, 1, 1),
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    revenue=p_rev,
+                    cost_of_revenue=p_rev * (1 - p_gross_margin),
+                    gross_profit=p_rev * p_gross_margin,
+                    operating_income=p_rev * p_op_margin,
+                    net_income=p_ni,
+                    shares_outstanding_basic=p_shares,
+                    shares_outstanding_diluted=p_shares
+                )
+                
+                # Simplified BS
+                base_bs = BalanceSheet(
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    total_assets=p_cash + (p_rev * 0.2), # Approx
+                    cash_and_equivalents=p_cash,
+                    total_liabilities=p_debt,
+                    short_term_debt=0,
+                    long_term_debt=p_debt,
+                    total_shareholders_equity=(p_cash + (p_rev * 0.2)) - p_debt,
+                    common_stock=p_shares # Storing shares count in common stock field for simpler retrieval if needed, though strictly it's value
+                )
+                
+                # Simplified CF
+                base_cf = CashFlowStatement(
+                    period_start=date(curr_date.year-1, 1, 1),
+                    period_end=date(curr_date.year-1, 12, 31),
+                    currency=p_currency,
+                    net_income=p_ni,
+                    cash_from_operations=p_ni, # simplified
+                    net_change_in_cash=0,
+                    cash_beginning_of_period=p_cash,
+                    cash_end_of_period=p_cash
+                )
+                
+                stmts = FinancialStatements(
+                    company_name=p_company,
+                    fiscal_year=curr_date.year-1,
+                    report_type=ReportType.ANNUAL_REPORT,
+                    accounting_standard=AccountingStandard.GAAP,
+                    currency=p_currency,
+                    income_statements=[base_is],
+                    balance_sheets=[base_bs],
+                    cash_flow_statements=[base_cf]
+                )
+                
+                # 2. Build Model
+                engine = ModelEngine(stmts)
+                linked_model = engine.build_linked_model()
+                # Manually inject market data for simpler processing downstream
+                linked_model.market_data = {'shares_outstanding': p_shares, 'current_price': 0, 'currency': p_currency}
+                
+                # 3. Forecast
+                assumptions = ForecastAssumptions(
+                    revenue_growth_rate=p_growth,
+                    gross_margin=p_gross_margin,
+                    operating_margin=p_op_margin,
+                    tax_rate=0.21,
+                    capex_percent_of_revenue=0.03,
+                    wacc=0.12 # Startup Cost of Capital default
+                )
+                
+                fc_engine = ForecastEngine(linked_model)
+                final_model = fc_engine.forecast(years=forecast_years, assumptions=assumptions)
+                
+                # 4. Reverse DCF
+                reverse_dcf = fc_engine.calculate_reverse_dcf(p_target_val, p_target_irr)
+                final_model.reverse_dcf = reverse_dcf
+                
+                # 5. AI Narrative
+                final_model.ai_summary = f"Generated startup model for {p_company} based on user drivers. Projected growth: {p_growth:.1%}."
+                final_model.investment_thesis = f"Targeting ${p_target_val:,.0f} valuation requires sustaining {reverse_dcf.required_growth_rate:.1%} CAGR."
+                final_model.recommendation = "VC TRACK"
+                
+                # 6. Generate PDF Report
+                from src.core.report_generator import ReportGenerator
+                generator = ReportGenerator(final_model, sentiment_data=None)
+                output_dir = "output"
+                os.makedirs(output_dir, exist_ok=True)
+                report_name = f"Startup_Valuation_{p_company.replace(' ', '_')}.pdf"
+                report_path = os.path.join(output_dir, report_name)
+                generator.generate_pdf(report_path)
+                
+                st.session_state.model = final_model
+                st.session_state.report_path = report_path
+                st.session_state.analysis_complete = True
+                st.session_state.market_data = linked_model.market_data # Use injected data
+                st.toast("Startup Model Generated!", icon="🦄")
+                st.rerun()
+
+    with p_tab2:
+        st.info("🔜 Excel Upload coming in next update. Use 'Driver Inputs' for now.")
+
 else:
     st.markdown("Upload an Annual/Quarterly Report (PDF) to generate a full 3-Statement Model with DCF and AI Sentiment Analysis.")
     uploaded_file = st.file_uploader("Drop PDF here", type=['pdf'])
@@ -314,7 +581,7 @@ else:
 
 
 # --- SENSITIVITY SIDEBAR ---
-if st.session_state.analysis_complete and st.session_state.model and st.session_state.app_mode == "📄 Deep Report Intelligence":
+if st.session_state.analysis_complete and st.session_state.model and (st.session_state.app_mode == "📄 Deep Report Intelligence" or st.session_state.app_mode == "🦄 Private / Startup Valuator"):
     with st.sidebar:
         st.header("⚡ Sensitivity Analysis")
         st.write("Stress-test the valuation by adjusting key drivers.")
@@ -433,19 +700,26 @@ if st.session_state.analysis_complete and st.session_state.model:
                     st.warning(risk)
 
     # 5. NEW TAB SYSTEM
+    is_private_mode = st.session_state.app_mode == "🦄 Private / Startup Valuator"
+    
     tab_list = ["🚀 Timing & Momentum", "🏢 Peer Benchmarking", "🔮 Markov Chain"]
     if is_report_mode:
         tab_list = ["📈 Financial Visuals", "💎 DCF Valuation"] + tab_list + ["📋 Model Data", "📥 Download Report"]
+    elif is_private_mode:
+        tab_list = ["📈 Financial Visuals", "💎 DCF & VC Valuation", "📋 Model Data", "📥 Download Report"]
     
     tabs = st.tabs(tab_list)
     
     # Logic to map tabs based on mode
     if is_report_mode:
         t_visuals, t_dcf, t_momentum, t_peers, t_markov, t_data, t_download = tabs
+    elif is_private_mode:
+        t_visuals, t_dcf, t_data, t_download = tabs
+        t_momentum, t_peers, t_markov = None, None, None # Not used
     else:
         t_momentum, t_peers, t_markov = tabs
 
-    if is_report_mode:
+    if is_report_mode or is_private_mode:
         with t_visuals:
             if model.historical_income_statements:
                 years = [s.period_end.year for s in model.historical_income_statements] + \
@@ -464,7 +738,6 @@ if st.session_state.analysis_complete and st.session_state.model:
 
         with t_dcf:
             if model.dcf_valuation:
-                # ... (rest of DCF code)
                 dcf = model.dcf_valuation
                 st.subheader("Intrinsic Value Breakdown")
                 c1, c2, c3 = st.columns(3)
@@ -478,6 +751,27 @@ if st.session_state.analysis_complete and st.session_state.model:
                     "Item": ["Sum PV FCF", "PV Terminal Value", "Enterprise Value", "Net Debt", "Equity Value", "Implied Price"],
                     "Value": [dcf.sum_pv_fcf, dcf.pv_terminal_value, dcf.enterprise_value, -dcf.net_debt, dcf.equity_value, dcf.implied_price_per_share]
                 }).style.format(subset=["Value"], formatter="{:,.2f}"))
+                
+                # Reverse DCF Section (Private Mode)
+                if hasattr(model, 'reverse_dcf') and model.reverse_dcf:
+                     st.markdown("---")
+                     st.subheader("🎯 Reverse DCF (Goal Seek)")
+                     rdcf = model.reverse_dcf
+                     
+                     st.markdown(f"To achieve a **${rdcf.target_price:,.0f}** valuation:")
+                     
+                     rc1, rc2, rc3 = st.columns(3)
+                     rc1.metric("Required Growth CAGR", f"{rdcf.required_growth_rate:.1%}", 
+                        delta=f"{rdcf.required_growth_rate - model.assumptions.revenue_growth_rate:.1%} vs Base")
+                     rc2.metric("Implied Multiple", f"{rdcf.implied_arr_multiple:.1f}x Revenue")
+                     rc3.metric("Breakeven Year", f"Year {rdcf.years_to_breakeven}" if rdcf.years_to_breakeven else "> 5 Years")
+                     
+                     if rdcf.required_growth_rate > 0.5:
+                         st.error("⚠️ **High Risk:** Required growth exceeds 50% CAGR. This implies 'Unicorn' trajectory.")
+                     elif rdcf.required_growth_rate > 0.2:
+                         st.warning("⚠️ **Moderate Risk:** Requires aggressive execution.")
+                     else:
+                         st.success("✅ **Achievable:** Growth target is within standard benchmarks.")
             else:
                 st.warning("DCF analysis requires a processed financial report.")
 
