@@ -300,8 +300,6 @@ class FinancialExtractor:
                 return int("20" + match.group(1))
         return 2024 # Default
 
-        return 0.0
-
     def _parse_number(self, val_str: str) -> float:
         """Robust number parser handling multi-format (EU/RU dots, parens)."""
         if not val_str: return 0.0
@@ -356,12 +354,7 @@ class FinancialExtractor:
                 # We need to split that.
                 
                 val_raw = matches[0] 
-                # If val_raw contains multiple numbers separated by space?
-                # "7.243.659   4.977.019"
                 parts = val_raw.strip().split()
-                if len(parts) > 1:
-                    # Usually first column is current year in these reports
-                    val_str = parts[0]
                 else:
                     val_str = val_raw
                 
