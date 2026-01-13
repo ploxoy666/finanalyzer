@@ -1228,22 +1228,25 @@ class ReportGenerator:
         # Calculate column widths to fit landscape (10.5 inches available with reduced margins)
         total_width = 10.3 * inch 
         num_cols = len(dcf.forecast_period_fcf)
-        # Weight first column less to give more room to years
-        unit_width = total_width / (1.2 + num_cols)
+        # Give first column more space for row labels (2.0 inches minimum)
+        first_col_width = 2.0 * inch
+        remaining_width = total_width - first_col_width
+        year_col_width = remaining_width / num_cols if num_cols > 0 else 1.0 * inch
         
-        t1 = Table(projected_data, colWidths=[unit_width*1.2] + [unit_width]*num_cols, hAlign='CENTER')
+        t1 = Table(projected_data, colWidths=[first_col_width] + [year_col_width]*num_cols, hAlign='CENTER')
         t1.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BACKGROUND', (0, 0), (-1, 0), self.colors['navy']),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),  # Row labels left-aligned
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
             ('GRID', (0, 0), (-1, -1), 0.25, self.colors['border_grey']),
-            ('FONTSIZE', (0, 0), (-1, -1), 6.5), # Smaller font for density
+            ('FONTSIZE', (0, 0), (-1, -1), 7), # Slightly larger for readability
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'), 
             ('LINEBELOW', (0, -2), (-1, -2), 1, self.colors['charcoal']),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, self.colors['light_grey']]),
-            ('LEFTPADDING', (0, 0), (-1, -1), 2),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ]))
         story.append(t1)
         story.append(Spacer(1, 0.15*inch))
