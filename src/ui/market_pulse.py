@@ -203,14 +203,28 @@ def render_market_pulse():
         # UI Controls for Markov
         m_col1, m_col2 = st.columns([1, 3])
         with m_col1:
+            st.markdown("##### ⚙️ Settings")
             m_days = st.slider("Forecast Days", 1, 30, 5)
-            if st.button("Run Markov Analysis"):
+            
+            with st.expander("Advanced Config", expanded=False):
+                m_period = st.selectbox("Data Period", ["1y", "2y", "5y", "max"], index=1)
+                m_states = st.slider("Number of States", 3, 10, 5, help="Granularity of price movements")
+                m_method = st.selectbox("Discretization", ["returns", "price", "quantile"], index=0, help="Method to define states")
+            
+            if st.button("Run Markov Analysis", type="primary"):
                 try:
                     from ..core.markov_integration import run_markov_chain_analysis
                     with st.spinner("Calculating transition matrices..."):
-                        logs, preds, m_data, viz, disc, mc = run_markov_chain_analysis(st.session_state.pulse_ticker, n_days=m_days)
+                        logs, preds, m_data, viz, disc, mc = run_markov_chain_analysis(
+                            st.session_state.pulse_ticker, 
+                            n_days=m_days,
+                            period=m_period,
+                            n_states=m_states,
+                            method=m_method
+                        )
                         st.session_state.markov_results = {
-                            "logs": logs, "preds": preds, "viz": viz
+                            "logs": logs, "preds": preds, "viz": viz, 
+                            "config": {"days": m_days, "period": m_period}
                         }
                 except ImportError:
                     st.error("Markov Integration module not found.")
@@ -223,7 +237,10 @@ def render_market_pulse():
                 
                 # Show key prediction
                 if res['preds']:
-                    if m_days == 1:
+                    # Use actual forecast days from result/config if available, else slider
+                    res_days = res.get('config', {}).get('days', m_days)
+                    
+                    if res_days == 1:
                         exp_price = res['preds']['expected_price']
                         move = res['preds']['expected_move_pct']
                         st.metric(f"Next Day Expectation", f"${exp_price:.2f}", f"{move:+.2f}%")
@@ -232,16 +249,16 @@ def render_market_pulse():
                         if 'probabilities' in res['preds']:
                             probs = res['preds']['probabilities']
                             fig_p = go.Figure(go.Bar(
-                                x=['Bear', 'Available', 'Bull'], # Simplified
+                                x=['Bear', 'Flat', 'Bull'], 
                                 y=[probs.get('down', 0), probs.get('flat', 0), probs.get('up', 0)],
                                 marker_color=['#ef4444', '#94a3b8', '#22c55e']
                             ))
-                            fig_p.update_layout(title="Movement Probability", height=200, template="plotly_dark")
+                            fig_p.update_layout(title="Movement Probability", height=200, template="plotly_dark", margin=dict(l=20, r=20, t=40, b=20))
                             st.plotly_chart(fig_p, use_container_width=True)
                             
                     else: # Multi-day
                         final = res['preds']['daily_predictions'][-1]
-                        st.metric(f"{m_days}-Day Forecast Target", f"${final['expected_price']:.2f}")
+                        st.metric(f"{res_days}-Day Forecast Target", f"${final['expected_price']:.2f}")
                         
                         # Plot trajectory
                         daily_df = pd.DataFrame(res['preds']['daily_predictions'])
@@ -252,7 +269,12 @@ def render_market_pulse():
                             name="Expected Path",
                             line=dict(color='#3b82f6', width=3)
                         ))
-                        fig_m.update_layout(template="plotly_dark", height=300, title="Expected Price Trajectory")
+                        # Add current price as start point
+                        current_p = st.session_state.market_data.get('current_price')
+                        if current_p:
+                             fig_m.add_trace(go.Scatter(x=[0], y=[current_p], mode='markers', name='Start', marker=dict(color='white', size=8)))
+
+                        fig_m.update_layout(template="plotly_dark", height=300, title="Expected Price Trajectory", margin=dict(l=20, r=20, t=40, b=20))
                         st.plotly_chart(fig_m, use_container_width=True)
                 
                 with st.expander("Show Analysis Logs"):
