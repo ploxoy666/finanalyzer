@@ -659,90 +659,93 @@ if st.session_state.analysis_complete and st.session_state.model:
             else:
                 st.warning("DCF analysis requires a processed financial report.")
 
-    with t_momentum:
-        st.subheader("📉 Technical Momentum & Entry Context")
-        if st.session_state.market_data:
-            ticker = st.session_state.market_data['ticker']
-            hist_df = MarketDataProvider.fetch_historical_with_indicators(ticker)
-            
-            if not hist_df.empty:
-                # Value vs Price Chart
-                fig_v = go.Figure()
-                fig_v.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name="Market Price", line=dict(color='#fff')))
-                fig_v.add_trace(go.Scatter(x=hist_df.index, y=[model.target_price]*len(hist_df), 
-                                         name="Intrinsic/Target Baseline", line=dict(color='gold', dash='dash', width=2)))
-                fig_v.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_200'], name="SMA 200 (Long Trend)", line=dict(color='cyan', width=1)))
-                fig_v.update_layout(title=f"{ticker} Momentum vs Valuation Baseline", template="plotly_dark", height=450)
-                st.plotly_chart(fig_v, use_container_width=True)
+    if t_momentum:
+        with t_momentum:
+            st.subheader("📉 Technical Momentum & Entry Context")
+            if st.session_state.market_data:
+                ticker = st.session_state.market_data['ticker']
+                hist_df = MarketDataProvider.fetch_historical_with_indicators(ticker)
                 
-                # Decision Matrix
-                col_m1, col_m2, col_m3 = st.columns(3)
-                with col_m1:
-                    last_rsi = hist_df['RSI'].iloc[-1]
-                    rsi_status = "OVERBOUGHT" if last_rsi > 70 else ("OVERSOLD" if last_rsi < 30 else "NEUTRAL")
-                    st.metric("RSI (14)", f"{last_rsi:.1f}", delta=rsi_status, delta_color="inverse")
-                with col_m2:
-                    curr = hist_df['Close'].iloc[-1]
-                    upside = (model.target_price / curr - 1)
-                    st.metric("Valuation Room", f"{upside:+.1%}", help="Distance to Intrinsic/Target price")
-                with col_m3:
-                    trend = "Bullish" if curr > hist_df['SMA_200'].iloc[-1] else "Bearish"
-                    st.metric("Trend Alignment", trend)
-                
-                # Recommendation logic
-                if upside > 0.15 and last_rsi < 40:
-                    st.success("💎 **STRONG BUY SIGNAL:** High Margin of Safety combined with favorable technical entry.")
-                elif upside < -0.10 or last_rsi > 75:
-                    st.error("⚠️ **CAUTION:** Overvalued fundamentals or extreme overbought momentum detected.")
+                if not hist_df.empty:
+                    # Value vs Price Chart
+                    fig_v = go.Figure()
+                    fig_v.add_trace(go.Scatter(x=hist_df.index, y=hist_df['Close'], name="Market Price", line=dict(color='#fff')))
+                    fig_v.add_trace(go.Scatter(x=hist_df.index, y=[model.target_price]*len(hist_df), 
+                                             name="Intrinsic/Target Baseline", line=dict(color='gold', dash='dash', width=2)))
+                    fig_v.add_trace(go.Scatter(x=hist_df.index, y=hist_df['SMA_200'], name="SMA 200 (Long Trend)", line=dict(color='cyan', width=1)))
+                    fig_v.update_layout(title=f"{ticker} Momentum vs Valuation Baseline", template="plotly_dark", height=450)
+                    st.plotly_chart(fig_v, use_container_width=True)
+                    
+                    # Decision Matrix
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    with col_m1:
+                        last_rsi = hist_df['RSI'].iloc[-1]
+                        rsi_status = "OVERBOUGHT" if last_rsi > 70 else ("OVERSOLD" if last_rsi < 30 else "NEUTRAL")
+                        st.metric("RSI (14)", f"{last_rsi:.1f}", delta=rsi_status, delta_color="inverse")
+                    with col_m2:
+                        curr = hist_df['Close'].iloc[-1]
+                        upside = (model.target_price / curr - 1)
+                        st.metric("Valuation Room", f"{upside:+.1%}", help="Distance to Intrinsic/Target price")
+                    with col_m3:
+                        trend = "Bullish" if curr > hist_df['SMA_200'].iloc[-1] else "Bearish"
+                        st.metric("Trend Alignment", trend)
+                    
+                    # Recommendation logic
+                    if upside > 0.15 and last_rsi < 40:
+                        st.success("💎 **STRONG BUY SIGNAL:** High Margin of Safety combined with favorable technical entry.")
+                    elif upside < -0.10 or last_rsi > 75:
+                        st.error("⚠️ **CAUTION:** Overvalued fundamentals or extreme overbought momentum detected.")
+                    else:
+                        st.info("💡 **HOLD/MONITOR:** Price is trading near fair value or momentum is neutral.")
+                    
+                    # Export Utility
+                    render_export_utility(
+                        "Timing & Momentum",
+                        f"Technical Analysis: {ticker}",
+                        "Fundamental DCF Intrinsic Value vs Technical Price Action",
+                        metrics={"RSI (14)": f"{last_rsi:.1f}", "Trend": trend, "Valuation Upside": f"{upside:+.1%}"}
+                    )
                 else:
-                    st.info("💡 **HOLD/MONITOR:** Price is trading near fair value or momentum is neutral.")
-                
-                # Export Utility
-                render_export_utility(
-                    "Timing & Momentum",
-                    f"Technical Analysis: {ticker}",
-                    "Fundamental DCF Intrinsic Value vs Technical Price Action",
-                    metrics={"RSI (14)": f"{last_rsi:.1f}", "Trend": trend, "Valuation Upside": f"{upside:+.1%}"}
-                )
+                    st.error("Historical data unavailable for this ticker.")
             else:
-                st.error("Historical data unavailable for this ticker.")
-        else:
-            st.info("Market data required for momentum analysis.")
+                st.info("Market data required for momentum analysis.")
 
-    with t_peers:
-        st.subheader("🏢 Sector Benchmarking")
-        if st.session_state.market_data:
-            ticker = st.session_state.market_data['ticker']
-            peers = MarketDataProvider.fetch_peers(ticker)
-            if peers:
-                peer_data = [st.session_state.market_data]
-                for p in peers[:4]:
-                    p_info = MarketDataProvider.fetch_data(p)
-                    if p_info: peer_data.append(p_info)
-                
-                bench_df = pd.DataFrame(peer_data)
-                st.dataframe(bench_df[['ticker', 'long_name', 'current_price', 'forward_pe', 'market_cap']].set_index('ticker'), use_container_width=True)
-                
-                bcol1, bcol2 = st.columns(2)
-                with bcol1:
-                    st.plotly_chart(px.bar(bench_df, x='ticker', y='forward_pe', color='ticker', title="P/E Multiples Comparison", template="plotly_dark"), use_container_width=True)
-                with bcol2:
-                    st.plotly_chart(px.pie(bench_df, values='market_cap', names='ticker', title="Relative Market Cap (Sector)", template="plotly_dark"), use_container_width=True)
-                
-                # Export Utility
-                render_export_utility(
-                    "Peer Comparison",
-                    f"Sector Benchmarking: {ticker}",
-                    "Relative Valuation & Market Cap vs Sector Peers",
-                    data_frames={"Peer Metrics": bench_df[['ticker', 'long_name', 'current_price', 'forward_pe', 'market_cap']]}
-                )
+    if t_peers:
+        with t_peers:
+            st.subheader("🏢 Sector Benchmarking")
+            if st.session_state.market_data:
+                ticker = st.session_state.market_data['ticker']
+                peers = MarketDataProvider.fetch_peers(ticker)
+                if peers:
+                    peer_data = [st.session_state.market_data]
+                    for p in peers[:4]:
+                        p_info = MarketDataProvider.fetch_data(p)
+                        if p_info: peer_data.append(p_info)
+                    
+                    bench_df = pd.DataFrame(peer_data)
+                    st.dataframe(bench_df[['ticker', 'long_name', 'current_price', 'forward_pe', 'market_cap']].set_index('ticker'), use_container_width=True)
+                    
+                    bcol1, bcol2 = st.columns(2)
+                    with bcol1:
+                        st.plotly_chart(px.bar(bench_df, x='ticker', y='forward_pe', color='ticker', title="P/E Multiples Comparison", template="plotly_dark"), use_container_width=True)
+                    with bcol2:
+                        st.plotly_chart(px.pie(bench_df, values='market_cap', names='ticker', title="Relative Market Cap (Sector)", template="plotly_dark"), use_container_width=True)
+                    
+                    # Export Utility
+                    render_export_utility(
+                        "Peer Comparison",
+                        f"Sector Benchmarking: {ticker}",
+                        "Relative Valuation & Market Cap vs Sector Peers",
+                        data_frames={"Peer Metrics": bench_df[['ticker', 'long_name', 'current_price', 'forward_pe', 'market_cap']]}
+                    )
+                else:
+                    st.write("No direct sector peers found for this ticker.")
             else:
-                st.write("No direct sector peers found for this ticker.")
-        else:
-            st.info("Add a valid stock ticker to enable peer benchmarking.")
+                st.info("Add a valid stock ticker to enable peer benchmarking.")
 
-    with t_markov:
-        if MARKOV_AVAILABLE:
+    if t_markov:
+        with t_markov:
+            if MARKOV_AVAILABLE:
             st.subheader("🔮 Probabilistic Price Prediction")
             m_ticker = st.text_input("Refine Ticker for Markov Analysis", value=model.ticker or "")
             
