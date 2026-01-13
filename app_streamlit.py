@@ -795,7 +795,7 @@ if st.session_state.analysis_complete and st.session_state.model:
             else:
                 st.warning("Markov Chain Analysis dependencies not available. Please install yfinance and pandas.")
 
-    if is_report_mode:
+    if is_report_mode or is_private_mode:
         with t_data:
             st.subheader("Raw Data Snapshot")
             col_r1, col_r2 = st.columns(2)
