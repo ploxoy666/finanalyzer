@@ -557,17 +557,50 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                     st.markdown(f"**Mapping:** Labels=`{label_col}`, Values=`{value_col}`")
                     
                     # 3. Extract Metrics Row-by-Row
+                    # 3. Extract Metrics Row-by-Row
+                    def text_to_float(text):
+                        if pd.isna(text): return 0.0
+                        s = str(text).strip()
+                        # Handle negative in parens (123) -> -123
+                        if s.startswith('(') and s.endswith(')'):
+                            s = '-' + s[1:-1]
+                        
+                        # Remove spaces (common as thousands sep)
+                        s = s.replace(' ', '').replace('\xa0', '') # \xa0 is non-breaking space
+                        
+                        # Heuristic for delimiters
+                        # If both . and , exist:
+                        if '.' in s and ',' in s:
+                            if s.rfind('.') > s.rfind(','): # 1,234.56 -> US
+                                s = s.replace(',', '')
+                            else: # 1.234,56 -> EU/RU
+                                s = s.replace('.', '').replace(',', '.')
+                        elif ',' in s:
+                            # Only commas generally implies EU/RU decimal OR thousands separator
+                            # If multiple commas: 1,234,567 -> implies US thousands
+                            if s.count(',') > 1: s = s.replace(',', '')
+                            else: s = s.replace(',', '.') # 123,45 -> 123.45
+                        elif '.' in s:
+                            # Only dots: 1.234.567 -> RU thousands -> remove all
+                            if s.count('.') > 1: s = s.replace('.', '')
+                            # If single dot, usually decimal 123.45, but could be 1.234 thousands. 
+                            # Hard to distinguish without context, generally assume decimal if single.
+                            
+                        # Remove remaining non-numeric chars except - and .
+                        import re
+                        s = re.sub(r'[^\d.-]', '', s)
+                        
+                        try:
+                            return float(s)
+                        except:
+                            return 0.0
+
                     def extract_val(keywords):
                         for idx, row in df_upload.iterrows():
                             # clean text
                             label = str(row[label_col]).lower().strip()
                             if any(k in label for k in keywords):
-                                # try to parse value
-                                try:
-                                    val = float(str(row[value_col]).replace(',', '').replace(' ', ''))
-                                    return val
-                                except:
-                                    continue
+                                return text_to_float(row[value_col])
                         return 0.0
 
                     # Terms to search for
