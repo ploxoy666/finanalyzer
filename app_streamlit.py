@@ -482,159 +482,281 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
         
         if uploaded_excel:
             try:
+                # 1. Load Data with "Header Sniffing"
+                # We read without header first to find the real header row
                 if uploaded_excel.name.endswith('.csv'):
-                    df_upload = pd.read_csv(uploaded_excel)
+                    df_raw = pd.read_csv(uploaded_excel, header=None)
                 else:
-                    df_upload = pd.read_excel(uploaded_excel)
+                    df_raw = pd.read_excel(uploaded_excel, header=None)
                 
-                st.write("First 5 rows of uploaded data:")
+                # Helper to find the header row
+                header_row_idx = 0
+                for i, row in df_raw.head(20).iterrows():
+                    row_str = row.astype(str).str.lower().values
+                    # Keywords that suggest this is the header row
+                    if any(x in row_str for x in ['revenue', 'year', 'description', 'item', 'particulars', 'period']):
+                        header_row_idx = i
+                        break
+                
+                # Reload with correct header
+                if uploaded_excel.name.endswith('.csv'):
+                    uploaded_excel.seek(0)
+                    df_upload = pd.read_csv(uploaded_excel, header=header_row_idx)
+                else:
+                    uploaded_excel.seek(0)
+                    df_upload = pd.read_excel(uploaded_excel, header=header_row_idx)
+                
+                # Clean column names
+                df_upload.columns = df_upload.columns.astype(str).str.strip()
+                
+                st.write("🔍 **Preview of Uploaded Data:**")
                 st.dataframe(df_upload.head())
                 
-                # Validation
+                # 2. Check for Standard Template
                 req_cols = ["Year", "Revenue", "Net_Income"]
-                if not all(col in df_upload.columns for col in req_cols):
-                    st.error(f"Missing required columns: {req_cols}. Please use the template.")
+                is_template = all(col in df_upload.columns for col in req_cols)
+                
+                extracted_data = []
+                
+                if is_template:
+                    st.success("✅ Standard template detected.")
+                    df_final = df_upload
                 else:
-                    with st.form("excel_drivers"):
-                        st.subheader("🔮 Forecast Assumptions")
-                        col_e1, col_e2 = st.columns(2)
-                        with col_e1:
-                            e_growth = st.slider("Forecast Revenue Growth (%)", -20, 200, 25) / 100
-                            e_target_val = st.number_input("Target Valuation ($)", value=10000000.0)
-                        with col_e2:
-                            e_wacc = st.slider("WACC / Discount Rate (%)", 5, 30, 12) / 100
-                            e_target_irr = st.slider("Target IRR (%)", 10, 50, 25) / 100
-                            
-                        submit_excel = st.form_submit_button("🚀 Generate Model from File")
+                    st.info("⚠️ Non-standard format detected. Attempting **Smart Extraction**...")
+                    
+                    # SMART PARSER LOGIC
+                    # 1. Identify "Label" Column (text descriptions)
+                    label_col = None
+                    for col in df_upload.columns:
+                        if df_upload[col].dtype == object:
+                            # Check if column has financial keywords
+                            sample = df_upload[col].astype(str).str.lower().str.cat(sep=' ')
+                            if 'revenue' in sample or 'income' in sample or 'total' in sample:
+                                label_col = col
+                                break
+                    
+                    # 2. Identify "Value" Column (numeric actuals)
+                    value_col = None
+                    # Prioritize columns with 'Actual', 'Current', '202x' in name
+                    potential_value_cols = [c for c in df_upload.columns if df_upload[c].dtype != object]
+                    
+                    for col in df_upload.columns:
+                        c_lower = col.lower()
+                        if any(x in c_lower for x in ['actual', 'current', 'amount', 'total', '202', '201']):
+                            value_col = col
+                            break
+                    
+                    # Fallback: Use first numeric column
+                    if not value_col and potential_value_cols:
+                        value_col = potential_value_cols[0]
                         
-                    if submit_excel:
-                        from src.models.schemas import LinkedModel, ReportType, AccountingStandard, FinancialStatements, IncomeStatement, BalanceSheet, CashFlowStatement, ForecastAssumptions, Currency
+                    if not label_col or not value_col:
+                        st.error("Could not auto-detect Label or Value columns. Please ensure text descriptions and numeric values exist.")
+                        st.stop()
                         
-                        # Process uploaded data into FinancialStatements
-                        inc_stmts = []
-                        bal_sheets = []
-                        cf_stmts = []
-                        
-                        df_upload = df_upload.sort_values("Year")
-                        
-                        for _, row in df_upload.iterrows():
-                            # Safe retrieval with defaults
-                            rev = row.get("Revenue", 0)
-                            cor = row.get("Cost_of_Revenue", 0)
-                            opex = row.get("Operating_Expenses", 0)
-                            ni = row.get("Net_Income", 0)
-                            cash = row.get("Cash_Balance", 0)
-                            debt = row.get("Total_Debt", 0)
-                            shares = row.get("Shares_Outstanding", 1000000)
-                            
-                            # Income Statement
-                            istmt = IncomeStatement(
-                                period_start=date(int(row["Year"]), 1, 1),
-                                period_end=date(int(row["Year"]), 12, 31),
-                                currency="USD",
-                                revenue=rev,
-                                cost_of_revenue=cor,
-                                gross_profit=rev - cor,
-                                operating_expenses=opex,
-                                operating_income=(rev - cor) - opex,
-                                net_income=ni,
-                                shares_outstanding_basic=shares
-                            )
-                            inc_stmts.append(istmt)
-                            
-                            # Balance Sheet (Simplified)
-                            bstmt = BalanceSheet(
-                                period_end=date(int(row["Year"]), 12, 31),
-                                currency="USD",
-                                total_assets=cash + (rev * 0.2), # Proxy if missing
-                                cash_and_equivalents=cash,
-                                total_liabilities=debt,
-                                total_shareholders_equity=(cash + (rev * 0.2)) - debt,
-                                common_stock=shares
-                            )
-                            bal_sheets.append(bstmt)
-                            
-                            # Cash Flow (Simplified)
-                            cstmt = CashFlowStatement(
-                                period_start=date(int(row["Year"]), 1, 1),
-                                period_end=date(int(row["Year"]), 12, 31),
-                                currency="USD",
-                                net_income=ni,
-                                cash_from_operations=ni, # Proxy
-                                net_change_in_cash=0,
-                                cash_beginning_of_period=cash, # Rough approx
-                                cash_end_of_period=cash
-                            )
-                            cf_stmts.append(cstmt)
+                    st.markdown(f"**Mapping:** Labels=`{label_col}`, Values=`{value_col}`")
+                    
+                    # 3. Extract Metrics Row-by-Row
+                    def extract_val(keywords):
+                        for idx, row in df_upload.iterrows():
+                            # clean text
+                            label = str(row[label_col]).lower().strip()
+                            if any(k in label for k in keywords):
+                                # try to parse value
+                                try:
+                                    val = float(str(row[value_col]).replace(',', '').replace(' ', ''))
+                                    return val
+                                except:
+                                    continue
+                        return 0.0
 
-                        stmt_container = FinancialStatements(
-                            company_name=os.path.splitext(uploaded_excel.name)[0],
-                            fiscal_year=int(df_upload.iloc[-1]["Year"]),
-                            report_type=ReportType.ANNUAL_REPORT,
-                            accounting_standard=AccountingStandard.GAAP,
+                    # Terms to search for
+                    rev = extract_val(['revenue', 'sales', 'turnover', 'total income'])
+                    ni = extract_val(['net income', 'profit', 'surplus', 'deficit', 'comprehensive income'])
+                    assets = extract_val(['total assets', 'non-current assets'])
+                    liab = extract_val(['total liabilities', 'current liabilities'])
+                    cash = extract_val(['cash', 'bank balance'])
+                    op_exp_row = extract_val(['total expenses', 'operating expenses'])
+                    
+                    # If we found nothing, maybe the file is transposed? (Skip for now, simplistic)
+                    
+                    st.warning("Please review the extracted figures below. The AI tried its best to read your format.")
+                    
+                    # Create a single 'year' entry (Current Year)
+                    df_final = pd.DataFrame({
+                        "Year": [date.today().year - 1],
+                        "Revenue": [rev],
+                        "Net_Income": [ni],
+                        "Total_Assets": [assets if assets > 0 else rev * 0.5], # heuristics fallback
+                        "Total_Liabilities": [liab],
+                        "Cash_Balance": [cash if cash > 0 else rev * 0.1],
+                        "Operating_Expenses": [op_exp_row if op_exp_row > 0 else rev * 0.7]
+                    })
+                    
+                # 3. Review & Edit Form
+                with st.form("excel_review"):
+                    st.subheader("📝 Review & Generate Model")
+                    
+                    edited_df = st.data_editor(df_final, num_rows="dynamic", use_container_width=True)
+                    
+                    col_e1, col_e2 = st.columns(2)
+                    with col_e1:
+                        e_growth = st.slider("Forecast Revenue Growth (%)", -20, 200, 25) / 100
+                        e_target_val = st.number_input("Target Valuation ($)", value=10000000.0)
+                    with col_e2:
+                        e_wacc = st.slider("WACC / Discount Rate (%)", 5, 30, 12) / 100
+                        e_target_irr = st.slider("Target IRR (%)", 10, 50, 25) / 100
+                        
+                    submit_excel = st.form_submit_button("🚀 Generate Model")
+                    
+                if submit_excel:
+                    from src.models.schemas import LinkedModel, ReportType, AccountingStandard, FinancialStatements, IncomeStatement, BalanceSheet, CashFlowStatement, ForecastAssumptions, Currency
+                    
+                    # Process uploaded data into FinancialStatements
+                    inc_stmts = []
+                    bal_sheets = []
+                    cf_stmts = []
+                    
+                    edited_df = edited_df.sort_values("Year")
+                    
+                    for _, row in edited_df.iterrows():
+                        # Safe retrieval with defaults
+                        rev = row.get("Revenue", 0)
+                        # Try calculate Cost of Rev if missing
+                        opex = row.get("Operating_Expenses", 0)
+                        ni = row.get("Net_Income", 0)
+                        
+                        # Infer Gross Profit/Cost if not present
+                        gross_profit = rev # pessimistic/simplified
+                        cost_of_rev = 0
+                        if "Cost_of_Revenue" in row:
+                            cost_of_rev = row["Cost_of_Revenue"]
+                            gross_profit = rev - cost_of_rev
+                        elif opex > 0:
+                            # Assume some split or that opex covers it
+                            pass 
+                        
+                        # Operating Income
+                        op_income = row.get("Operating_Income", gross_profit - opex)
+                        
+                        shares = row.get("Shares_Outstanding", 1000000)
+                        
+                        # Income Statement
+                        istmt = IncomeStatement(
+                            period_start=date(int(row["Year"]), 1, 1),
+                            period_end=date(int(row["Year"]), 12, 31),
                             currency="USD",
-                            income_statements=inc_stmts,
-                            balance_sheets=bal_sheets,
-                            cash_flow_statements=cf_stmts
+                            revenue=rev,
+                            cost_of_revenue=cost_of_rev,
+                            gross_profit=gross_profit,
+                            operating_expenses=opex,
+                            operating_income=op_income,
+                            net_income=ni,
+                            shares_outstanding_basic=shares
                         )
+                        inc_stmts.append(istmt)
                         
-                        # Build Model
-                        eng = ModelEngine(stmt_container)
-                        lnk_model = eng.build_linked_model()
+                        # Balance Sheet (Simplified)
+                        # Use extracted values or reasonable ratios
+                        cash = row.get("Cash_Balance", rev * 0.1)
+                        assets = row.get("Total_Assets", cash + (rev * 0.3))
+                        debt = row.get("Total_Debt", row.get("Total_Liabilities", 0))
+                        liab = row.get("Total_Liabilities", debt)
+                        equity = row.get("Total_Shareholders_Equity", assets - liab)
                         
-                        # Set Market Data
-                        last_row = df_upload.iloc[-1]
-                        lnk_model.market_data = {
-                            'shares_outstanding': last_row.get("Shares_Outstanding", 1000000), 
-                            'current_price': 0, 
-                            'currency': 'USD',
-                            'long_name': stmt_container.company_name
-                        }
-                        
-                        # Forecast
-                        # Determine historical margins for defaults if reasonable
-                        last_gross_margin = (inc_stmts[-1].gross_profit / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.6
-                        last_op_margin = (inc_stmts[-1].operating_income / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.15
-                        
-                        assumps = ForecastAssumptions(
-                            revenue_growth_rate=e_growth,
-                            gross_margin=last_gross_margin,
-                            operating_margin=last_op_margin,
-                            tax_rate=0.21,
-                            capex_percent_of_revenue=0.03,
-                            wacc=e_wacc
+                        bstmt = BalanceSheet(
+                            period_end=date(int(row["Year"]), 12, 31),
+                            currency="USD",
+                            total_assets=assets,
+                            cash_and_equivalents=cash,
+                            total_liabilities=liab,
+                            long_term_debt=debt,
+                            total_shareholders_equity=equity,
+                            common_stock=shares
                         )
+                        bal_sheets.append(bstmt)
                         
-                        fc_eng = ForecastEngine(lnk_model)
-                        fin_model = fc_eng.forecast(years=5, assumptions=assumps)
-                        
-                        # DCF
-                        fin_model = fc_eng.generate_investment_advice(sentiment_result=None)
-                        
-                        # Reverse DCF
-                        rev_dcf = fc_eng.calculate_reverse_dcf(e_target_val, e_target_irr)
-                        fin_model.reverse_dcf = rev_dcf
-                        
-                        # Narrative
-                        fin_model.ai_summary = f"Model generated from uploaded history ({len(df_upload)} years). Forecast growth: {e_growth:.1%}."
-                        fin_model.investment_thesis = f"Historical trend extrapolation + user assumptions. Target Valuation: ${e_target_val:,.0f}"
-                        fin_model.recommendation = "DATA DRIVEN"
+                        # Cash Flow (Simplified)
+                        cstmt = CashFlowStatement(
+                            period_start=date(int(row["Year"]), 1, 1),
+                            period_end=date(int(row["Year"]), 12, 31),
+                            currency="USD",
+                            net_income=ni,
+                            cash_from_operations=ni, # Proxy
+                            net_change_in_cash=0,
+                            cash_beginning_of_period=cash,
+                            cash_end_of_period=cash
+                        )
+                        cf_stmts.append(cstmt)
 
-                        # Generate PDF Report
-                        from src.core.report_generator import ReportGenerator
-                        generator = ReportGenerator(fin_model, sentiment_data=None)
-                        output_dir = "output"
-                        os.makedirs(output_dir, exist_ok=True)
-                        report_name = f"Startup_Valuation_{stmt_container.company_name}.pdf"
-                        report_path = os.path.join(output_dir, report_name)
-                        generator.generate_pdf(report_path)
-                        
-                        st.session_state.model = fin_model
-                        st.session_state.report_path = report_path
-                        st.session_state.analysis_complete = True
-                        st.session_state.market_data = lnk_model.market_data
-                        st.toast("Model Built from Excel!", icon="📊")
-                        st.rerun()
+                    stmt_container = FinancialStatements(
+                        company_name=os.path.splitext(uploaded_excel.name)[0],
+                        fiscal_year=int(edited_df.iloc[-1]["Year"]),
+                        report_type=ReportType.ANNUAL_REPORT,
+                        accounting_standard=AccountingStandard.GAAP,
+                        currency="USD",
+                        income_statements=inc_stmts,
+                        balance_sheets=bal_sheets,
+                        cash_flow_statements=cf_stmts
+                    )
+                    
+                    # Build Model
+                    eng = ModelEngine(stmt_container)
+                    lnk_model = eng.build_linked_model()
+                    
+                    # Set Market Data
+                    last_row = edited_df.iloc[-1]
+                    lnk_model.market_data = {
+                        'shares_outstanding': last_row.get("Shares_Outstanding", 1000000), 
+                        'current_price': 0, 
+                        'currency': 'USD',
+                        'long_name': stmt_container.company_name
+                    }
+                    
+                    # Forecast
+                    # Determine historical margins for defaults if reasonable
+                    last_gross_margin = (inc_stmts[-1].gross_profit / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.6
+                    last_op_margin = (inc_stmts[-1].operating_income / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.15
+                    
+                    assumps = ForecastAssumptions(
+                        revenue_growth_rate=e_growth,
+                        gross_margin=last_gross_margin,
+                        operating_margin=last_op_margin,
+                        tax_rate=0.21,
+                        capex_percent_of_revenue=0.03,
+                        wacc=e_wacc
+                    )
+                    
+                    fc_eng = ForecastEngine(lnk_model)
+                    fin_model = fc_eng.forecast(years=5, assumptions=assumps)
+                    
+                    # DCF
+                    fin_model = fc_eng.generate_investment_advice(sentiment_result=None)
+                    
+                    # Reverse DCF
+                    rev_dcf = fc_eng.calculate_reverse_dcf(e_target_val, e_target_irr)
+                    fin_model.reverse_dcf = rev_dcf
+                    
+                    # Narrative
+                    fin_model.ai_summary = f"Model generated from uploaded history ({len(edited_df)} periods). Forecast growth: {e_growth:.1%}."
+                    fin_model.investment_thesis = f"Historical trend extrapolation + user assumptions. Target Valuation: ${e_target_val:,.0f}"
+                    fin_model.recommendation = "DATA DRIVEN"
+
+                    # Generate PDF Report
+                    from src.core.report_generator import ReportGenerator
+                    generator = ReportGenerator(fin_model, sentiment_data=None)
+                    output_dir = "output"
+                    os.makedirs(output_dir, exist_ok=True)
+                    report_name = f"Startup_Valuation_{stmt_container.company_name}.pdf"
+                    report_path = os.path.join(output_dir, report_name)
+                    generator.generate_pdf(report_path)
+                    
+                    st.session_state.model = fin_model
+                    st.session_state.report_path = report_path
+                    st.session_state.analysis_complete = True
+                    st.session_state.market_data = lnk_model.market_data
+                    st.toast("Model Built from Excel!", icon="📊")
+                    st.rerun()
 
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
