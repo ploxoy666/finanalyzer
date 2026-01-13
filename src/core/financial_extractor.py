@@ -69,9 +69,46 @@ class FinancialExtractor:
             'shares': [
                 r'(?i)Common\s+stock\s+outstanding.*?([\d,.]+)', 
                 r'(?i)shares\s+of\s+common\s+stock\s+outstanding.*?([\d,.]+)', 
-                r'(?i)Weighted\s+average\s+shares.*?diluted.*?([\d,.]+)'
+                r'(?i)Weighted\s+average\s+shares.*?diluted.*?([\d,.]+)',
+                r'(?i)Diluted\s+shares.*?([\d,.]+)'
             ],
-            'ticker': [r'(?i)\(?(NASDAQ|NYSE|OTC|TSX)\s*:\s*([A-Z]+)\)?', r'(?i)Symbol\s*:\s*([A-Z]+)']
+            'ticker': [r'(?i)\(?(NASDAQ|NYSE|OTC|TSX)\s*:\s*([A-Z]+)\)?', r'(?i)Symbol\s*:\s*([A-Z]+)'],
+            # Cash Flow Items
+            'capital_expenditures': [
+                r'(?i)Capital\s+expenditures?\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Purchase\s+of\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Purchases\s+related\s+to\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Acquisitions?\s+of\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Капитальные\s+затраты\s*[\$]?\s*\(?([\d\s,.]+)\)?'
+            ],
+            'dividends_paid': [
+                r'(?i)Dividends?\s+paid\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Cash\s+dividends?\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Дивиденды\s+выплаченные\s*[\$]?\s*\(?([\d\s,.]+)\)?'
+            ],
+            'cash_from_operations': [
+                r'(?i)Net\s+cash\s+(?:provided\s+by|from)\s+operating\s+activities\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Cash\s+flows?\s+from\s+operating\s+activities\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Денежные\s+средства\s+от\s+операционной\s+деятельности\s*[\$]?\s*\(?([\d\s,.]+)\)?'
+            ],
+            'depreciation': [
+                r'(?i)Depreciation\s+and\s+amortization\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Depreciation\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Амортизация\s*[\$]?\s*([\d\s,.]+)'
+            ],
+            'accounts_receivable': [
+                r'(?i)Accounts\s+receivable.*?[\$]?\s*([\d,.]+)',
+                r'(?i)Trade\s+receivables?\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Дебиторская\s+задолженность\s*[\$]?\s*([\d\s,.]+)'
+            ],
+            'inventory': [
+                r'(?i)Inventor(?:y|ies)\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Запасы\s*[\$]?\s*([\d\s,.]+)'
+            ],
+            'cash_and_equivalents': [
+                r'(?i)Cash\s+and\s+cash\s+equivalents?\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Денежные\s+средства\s+и\s+эквиваленты\s*[\$]?\s*([\d\s,.]+)'
+            ]
         }
 
     def extract(self) -> FinancialStatements:
@@ -184,43 +221,88 @@ class FinancialExtractor:
             shares_outstanding_diluted=shares if shares > 0 else 1e9 # Placeholder if not found
         )
         
-        # Balance Sheet
+        # Balance Sheet - use extracted data where available
+        total_assets = data.get('total_assets', 0)
+        total_liab = data.get('total_liabilities', 0)
+        total_equity = data.get('total_equity', 0) or (total_assets - total_liab) if total_assets > 0 else 0
+        
+        # Use extracted values or estimate from total assets
+        cash = data.get('cash_and_equivalents', 0)
+        if cash == 0 and total_assets > 0:
+            cash = total_assets * 0.2  # Estimate 20% of assets as cash
+            
+        ar = data.get('accounts_receivable', 0)
+        if ar == 0 and total_assets > 0:
+            ar = total_assets * 0.1
+            
+        inv = data.get('inventory', 0)
+        if inv == 0 and total_assets > 0:
+            inv = total_assets * 0.1
+        
         bs_stmt = BalanceSheet(
             period_end=date(year-1, 12, 31),
-            total_assets=data.get('total_assets', 0),
-            total_liabilities=data.get('total_liabilities', 0),
-            total_shareholders_equity=data.get('total_equity', 0) or (data.get('total_assets', 0) - data.get('total_liabilities', 0)),
-            # Fillers - improved for logical consistency
-            cash_and_equivalents=data.get('total_assets', 0) * 0.2 if data.get('total_assets', 0) > 0 else 0,
-            accounts_receivable=data.get('total_assets', 0) * 0.1,
-            inventory=data.get('total_assets', 0) * 0.1,
-            total_current_assets=data.get('total_assets', 0) * 0.5,
-            property_plant_equipment_net=data.get('total_assets', 0) * 0.3,
+            total_assets=total_assets,
+            total_liabilities=total_liab,
+            total_shareholders_equity=total_equity,
+            cash_and_equivalents=cash,
+            accounts_receivable=ar,
+            inventory=inv,
+            total_current_assets=total_assets * 0.5 if total_assets > 0 else 0,
+            property_plant_equipment_net=total_assets * 0.3 if total_assets > 0 else 0,
             intangible_assets=0,
-            accounts_payable=data.get('total_liabilities', 0) * 0.2,
+            accounts_payable=total_liab * 0.2 if total_liab > 0 else 0,
             short_term_debt=0,
-            long_term_debt=data.get('total_liabilities', 0) * 0.5,
-            total_current_liabilities=data.get('total_liabilities', 0) * 0.4,
-            retained_earnings=data.get('total_equity', 0) * 0.8
+            long_term_debt=total_liab * 0.5 if total_liab > 0 else 0,
+            total_current_liabilities=total_liab * 0.4 if total_liab > 0 else 0,
+            retained_earnings=total_equity * 0.8 if total_equity > 0 else 0
         )
         
-        # Cash Flow (LINKED to Income Statement)
-        da = inc_stmt.depreciation_amortization or 0
-        cfo = net + da # Simplification: NI + D&A
+        # Cash Flow - use extracted data where available
+        da = data.get('depreciation', 0)
+        if da == 0 and op_income > 0:
+            da = op_income * 0.1  # Estimate 10% of operating income as D&A
+        
+        # Use extracted or estimate CFO
+        cfo = data.get('cash_from_operations', 0)
+        if cfo == 0:
+            cfo = net + da  # Simplified: NI + D&A
+        
+        # Use extracted CAPEX (usually negative/outflow)
+        capex = data.get('capital_expenditures', 0)
+        if capex > 0:
+            capex = -capex  # Make negative (outflow)
+        
+        # Use extracted Dividends (usually negative/outflow)  
+        divs = data.get('dividends_paid', 0)
+        if divs > 0:
+            divs = -divs  # Make negative (outflow)
+        
+        # Cash from investing = CAPEX (simplified)
+        cfi = capex
+        
+        # Cash from financing = Dividends (simplified)
+        cff = divs
+        
+        # Net change
+        net_cash_change = cfo + cfi + cff
         
         cf_stmt = CashFlowStatement(
             period_start=date(year-1, 1, 1),
             period_end=date(year-1, 12, 31),
             net_income=net,
             depreciation_amortization=da,
-            changes_in_working_capital=0,
+            changes_in_working_capital=0,  # Would need delta calculation
             cash_from_operations=cfo,
-            capital_expenditures=0,
-            cash_from_investing=0,
-            dividends_paid=0,
-            cash_from_financing=0,
-            net_change_in_cash=cfo # If others are 0, Net Change is CFO
+            capital_expenditures=capex,
+            cash_from_investing=cfi,
+            dividends_paid=divs,
+            cash_from_financing=cff,
+            net_change_in_cash=net_cash_change
         )
+        
+        # Update D&A in Income Statement to match CF
+        inc_stmt.depreciation_amortization = da
+        inc_stmt.ebitda = (op_income + da) if op_income > 0 else 0
 
         return FinancialStatements(
             company_name=company_name,

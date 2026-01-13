@@ -56,7 +56,51 @@ class ModelEngine:
         # 3. Calculate historical ratios
         historical_ratios = self._calculate_ratios()
         
-        # 4. Create linked model
+        # 4. Calculate assumptions from historical data (not hardcoded!)
+        last_inc = self.statements.income_statements[-1]
+        last_bs = self.statements.balance_sheets[-1]
+        last_cf = self.statements.cash_flow_statements[-1] if self.statements.cash_flow_statements else None
+        
+        # Calculate actual margins from historical data
+        if last_inc.revenue and last_inc.revenue > 0:
+            hist_gross_margin = (last_inc.gross_profit / last_inc.revenue) if last_inc.gross_profit else 0.40
+            hist_op_margin = (last_inc.operating_income / last_inc.revenue) if last_inc.operating_income else 0.20
+            hist_net_margin = last_inc.net_income / last_inc.revenue
+        else:
+            hist_gross_margin = 0.40
+            hist_op_margin = 0.20
+            hist_net_margin = 0.10
+        
+        # Sanity checks for margins
+        hist_gross_margin = max(0.10, min(0.95, hist_gross_margin))  # Clamp between 10% and 95%
+        hist_op_margin = max(-0.50, min(0.80, hist_op_margin))  # Allow negative op margin for growth companies
+        
+        # Calculate CAPEX % from historical CF if available
+        hist_capex_pct = 0.05
+        if last_cf and last_cf.capital_expenditures and last_inc.revenue > 0:
+            hist_capex_pct = abs(last_cf.capital_expenditures) / last_inc.revenue
+            hist_capex_pct = max(0.01, min(0.20, hist_capex_pct))  # Clamp 1-20%
+        
+        # Calculate dividend payout ratio
+        hist_div_payout = 0.0
+        if last_cf and last_cf.dividends_paid and last_inc.net_income > 0:
+            hist_div_payout = abs(last_cf.dividends_paid) / last_inc.net_income
+            hist_div_payout = min(1.0, hist_div_payout)  # Cap at 100%
+        
+        # Calculate working capital days from historical BS
+        hist_dso = 45
+        hist_dio = 60
+        hist_dpo = 30
+        if last_bs.accounts_receivable and last_inc.revenue > 0:
+            hist_dso = int((last_bs.accounts_receivable / last_inc.revenue) * 365)
+        if last_bs.inventory and last_inc.cost_of_revenue and last_inc.cost_of_revenue > 0:
+            hist_dio = int((last_bs.inventory / last_inc.cost_of_revenue) * 365)
+        if last_bs.accounts_payable and last_inc.cost_of_revenue and last_inc.cost_of_revenue > 0:
+            hist_dpo = int((last_bs.accounts_payable / last_inc.cost_of_revenue) * 365)
+        
+        logger.info(f"Derived assumptions from historical: Gross Margin={hist_gross_margin:.1%}, Op Margin={hist_op_margin:.1%}, CAPEX={hist_capex_pct:.1%}")
+        
+        # 5. Create linked model with data-driven assumptions
         self.linked_model = LinkedModel(
             company_name=self.statements.company_name,
             base_year=self.statements.fiscal_year,
@@ -69,10 +113,15 @@ class ModelEngine:
             historical_cash_flows=self.statements.cash_flow_statements,
             historical_ratios=historical_ratios,
             assumptions=ForecastAssumptions(
-                revenue_growth_rate=0.05,
-                gross_margin=0.40,
-                operating_margin=0.20,
-                dividend_payout_ratio=0.0
+                revenue_growth_rate=0.05,  # Conservative default
+                gross_margin=hist_gross_margin,
+                operating_margin=hist_op_margin,
+                net_margin=hist_net_margin,
+                capex_percent_of_revenue=hist_capex_pct,
+                dividend_payout_ratio=hist_div_payout,
+                days_sales_outstanding=hist_dso,
+                days_inventory_outstanding=hist_dio,
+                days_payable_outstanding=hist_dpo
             )
         )
         

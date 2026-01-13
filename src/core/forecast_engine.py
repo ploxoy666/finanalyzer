@@ -630,13 +630,43 @@ class ForecastEngine:
             equity_value = 0
             
         mkt = self.model.market_data or {}
-        shares = mkt.get('shares_outstanding') or latest_bs.common_stock or 1e9 # fallback
-        if shares < 1e6: shares *= 1e6 # Handle units if likely in millions
+        
+        # Get shares from multiple sources with proper fallback chain
+        # Priority: 1. Market data, 2. Income Statement diluted, 3. Income Statement basic
+        shares = mkt.get('shares_outstanding')
+        
+        if not shares or shares <= 0:
+            # Try to get from latest historical income statement
+            latest_inc = self.model.historical_income_statements[-1]
+            shares = latest_inc.shares_outstanding_diluted or latest_inc.shares_outstanding_basic or 0
+        
+        if not shares or shares <= 0:
+            # Try forecast income statement
+            if self.model.forecast_income_statements:
+                fc_inc = self.model.forecast_income_statements[-1]
+                shares = fc_inc.shares_outstanding_diluted or fc_inc.shares_outstanding_basic or 0
+        
+        # Handle unit conversion (if shares seem to be in millions or billions)
+        if shares > 0:
+            # If shares < 1000, likely reported in millions/billions
+            if shares < 1000:
+                shares *= 1e6  # Convert millions to actual count
+                logger.info(f"Converted shares from millions: {shares/1e6:.1f}M -> {shares:,.0f}")
+            elif shares < 1e6:
+                shares *= 1e6  # Also likely in millions
+                logger.info(f"Converted shares from millions: {shares/1e6:.1f}M -> {shares:,.0f}")
+        
+        # Final fallback if still no valid shares
+        if not shares or shares <= 0:
+            logger.warning("Could not determine shares outstanding. Using fallback of 1B shares.")
+            shares = 1e9
         
         implied_price = equity_value / shares if shares > 0 else 0
         
+        logger.info(f"DCF: Equity Value=${equity_value/1e6:,.0f}M, Shares={shares/1e6:,.1f}M, Implied Price=${implied_price:,.2f}")
+        
         # Final Sanity Check for Target Price
-        if implied_price > 10000: # Unrealistic unless Berkshire
+        if implied_price > 10000:  # Unrealistic unless Berkshire
             if mkt.get('current_price') and implied_price > mkt['current_price'] * 10:
                 logger.warning(f"Target price {implied_price} seems unrealistic. Capping.")
                 implied_price = mkt['current_price'] * 2.0
