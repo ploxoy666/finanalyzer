@@ -451,7 +451,194 @@ elif st.session_state.app_mode == "🦄 Private / Startup Valuator":
                 st.rerun()
 
     with p_tab2:
-        st.info("🔜 Excel Upload coming in next update. Use 'Driver Inputs' for now.")
+        st.markdown("### 📂 Upload Historical Financials")
+        st.markdown("Upload your historical financial data to build a more accurate forecast based on actual trends.")
+        
+        # Template Generator
+        def convert_df(df):
+            return df.to_csv(index=False).encode('utf-8')
+
+        template_data = pd.DataFrame({
+            "Year": [2022, 2023, 2024],
+            "Revenue": [1000000, 1500000, 2250000],
+            "Cost_of_Revenue": [400000, 600000, 900000],
+            "Operating_Expenses": [300000, 400000, 600000],
+            "Net_Income": [200000, 350000, 550000],
+            "Cash_Balance": [150000, 300000, 600000],
+            "Total_Debt": [50000, 0, 0],
+            "Shares_Outstanding": [1000000, 1000000, 1100000]
+        })
+        
+        col_dl, col_up = st.columns([1, 2])
+        with col_dl:
+            st.download_button(
+                label="📥 Download Excel Template",
+                data=convert_df(template_data),
+                file_name="financial_history_template.csv",
+                mime="text/csv",
+            )
+        
+        uploaded_excel = st.file_uploader("Upload CSV or Excel", type=['csv', 'xlsx'])
+        
+        if uploaded_excel:
+            try:
+                if uploaded_excel.name.endswith('.csv'):
+                    df_upload = pd.read_csv(uploaded_excel)
+                else:
+                    df_upload = pd.read_excel(uploaded_excel)
+                
+                st.write("First 5 rows of uploaded data:")
+                st.dataframe(df_upload.head())
+                
+                # Validation
+                req_cols = ["Year", "Revenue", "Net_Income"]
+                if not all(col in df_upload.columns for col in req_cols):
+                    st.error(f"Missing required columns: {req_cols}. Please use the template.")
+                else:
+                    with st.form("excel_drivers"):
+                        st.subheader("🔮 Forecast Assumptions")
+                        col_e1, col_e2 = st.columns(2)
+                        with col_e1:
+                            e_growth = st.slider("Forecast Revenue Growth (%)", -20, 200, 25) / 100
+                            e_target_val = st.number_input("Target Valuation ($)", value=10000000.0)
+                        with col_e2:
+                            e_wacc = st.slider("WACC / Discount Rate (%)", 5, 30, 12) / 100
+                            e_target_irr = st.slider("Target IRR (%)", 10, 50, 25) / 100
+                            
+                        submit_excel = st.form_submit_button("🚀 Generate Model from File")
+                        
+                    if submit_excel:
+                        from src.models.schemas import LinkedModel, ReportType, AccountingStandard, FinancialStatements, IncomeStatement, BalanceSheet, CashFlowStatement, ForecastAssumptions, Currency
+                        
+                        # Process uploaded data into FinancialStatements
+                        inc_stmts = []
+                        bal_sheets = []
+                        cf_stmts = []
+                        
+                        df_upload = df_upload.sort_values("Year")
+                        
+                        for _, row in df_upload.iterrows():
+                            # Safe retrieval with defaults
+                            rev = row.get("Revenue", 0)
+                            cor = row.get("Cost_of_Revenue", 0)
+                            opex = row.get("Operating_Expenses", 0)
+                            ni = row.get("Net_Income", 0)
+                            cash = row.get("Cash_Balance", 0)
+                            debt = row.get("Total_Debt", 0)
+                            shares = row.get("Shares_Outstanding", 1000000)
+                            
+                            # Income Statement
+                            istmt = IncomeStatement(
+                                period_start=date(int(row["Year"]), 1, 1),
+                                period_end=date(int(row["Year"]), 12, 31),
+                                currency="USD",
+                                revenue=rev,
+                                cost_of_revenue=cor,
+                                gross_profit=rev - cor,
+                                operating_expenses=opex,
+                                operating_income=(rev - cor) - opex,
+                                net_income=ni,
+                                shares_outstanding_basic=shares
+                            )
+                            inc_stmts.append(istmt)
+                            
+                            # Balance Sheet (Simplified)
+                            bstmt = BalanceSheet(
+                                period_end=date(int(row["Year"]), 12, 31),
+                                currency="USD",
+                                total_assets=cash + (rev * 0.2), # Proxy if missing
+                                cash_and_equivalents=cash,
+                                total_liabilities=debt,
+                                total_shareholders_equity=(cash + (rev * 0.2)) - debt,
+                                common_stock=shares
+                            )
+                            bal_sheets.append(bstmt)
+                            
+                            # Cash Flow (Simplified)
+                            cstmt = CashFlowStatement(
+                                period_start=date(int(row["Year"]), 1, 1),
+                                period_end=date(int(row["Year"]), 12, 31),
+                                currency="USD",
+                                net_income=ni,
+                                cash_from_operations=ni, # Proxy
+                                net_change_in_cash=0,
+                                cash_beginning_of_period=cash, # Rough approx
+                                cash_end_of_period=cash
+                            )
+                            cf_stmts.append(cstmt)
+
+                        stmt_container = FinancialStatements(
+                            company_name=os.path.splitext(uploaded_excel.name)[0],
+                            fiscal_year=int(df_upload.iloc[-1]["Year"]),
+                            report_type=ReportType.ANNUAL_REPORT,
+                            accounting_standard=AccountingStandard.GAAP,
+                            currency="USD",
+                            income_statements=inc_stmts,
+                            balance_sheets=bal_sheets,
+                            cash_flow_statements=cf_stmts
+                        )
+                        
+                        # Build Model
+                        eng = ModelEngine(stmt_container)
+                        lnk_model = eng.build_linked_model()
+                        
+                        # Set Market Data
+                        last_row = df_upload.iloc[-1]
+                        lnk_model.market_data = {
+                            'shares_outstanding': last_row.get("Shares_Outstanding", 1000000), 
+                            'current_price': 0, 
+                            'currency': 'USD',
+                            'long_name': stmt_container.company_name
+                        }
+                        
+                        # Forecast
+                        # Determine historical margins for defaults if reasonable
+                        last_gross_margin = (inc_stmts[-1].gross_profit / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.6
+                        last_op_margin = (inc_stmts[-1].operating_income / inc_stmts[-1].revenue) if inc_stmts[-1].revenue else 0.15
+                        
+                        assumps = ForecastAssumptions(
+                            revenue_growth_rate=e_growth,
+                            gross_margin=last_gross_margin,
+                            operating_margin=last_op_margin,
+                            tax_rate=0.21,
+                            capex_percent_of_revenue=0.03,
+                            wacc=e_wacc
+                        )
+                        
+                        fc_eng = ForecastEngine(lnk_model)
+                        fin_model = fc_eng.forecast(years=5, assumptions=assumps)
+                        
+                        # DCF
+                        fin_model = fc_eng.generate_investment_advice(sentiment_result=None)
+                        
+                        # Reverse DCF
+                        rev_dcf = fc_eng.calculate_reverse_dcf(e_target_val, e_target_irr)
+                        fin_model.reverse_dcf = rev_dcf
+                        
+                        # Narrative
+                        fin_model.ai_summary = f"Model generated from uploaded history ({len(df_upload)} years). Forecast growth: {e_growth:.1%}."
+                        fin_model.investment_thesis = f"Historical trend extrapolation + user assumptions. Target Valuation: ${e_target_val:,.0f}"
+                        fin_model.recommendation = "DATA DRIVEN"
+
+                        # Generate PDF Report
+                        from src.core.report_generator import ReportGenerator
+                        generator = ReportGenerator(fin_model, sentiment_data=None)
+                        output_dir = "output"
+                        os.makedirs(output_dir, exist_ok=True)
+                        report_name = f"Startup_Valuation_{stmt_container.company_name}.pdf"
+                        report_path = os.path.join(output_dir, report_name)
+                        generator.generate_pdf(report_path)
+                        
+                        st.session_state.model = fin_model
+                        st.session_state.report_path = report_path
+                        st.session_state.analysis_complete = True
+                        st.session_state.market_data = lnk_model.market_data
+                        st.toast("Model Built from Excel!", icon="📊")
+                        st.rerun()
+
+            except Exception as e:
+                st.error(f"Error processing file: {str(e)}")
+
 
 else:
     st.markdown("Upload an Annual/Quarterly Report (PDF) to generate a full 3-Statement Model with DCF and AI Sentiment Analysis.")
