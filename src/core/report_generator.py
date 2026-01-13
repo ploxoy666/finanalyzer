@@ -847,47 +847,6 @@ class ReportGenerator:
         beg_re_implied = end_re - ni + div
         
         return f"NI (${ni:,.0f}) - Div (${div:,.0f}) = ΔRE (${ni-div:,.0f})\nEnding RE (${end_re:,.0f}) = Implied Beg (${beg_re_implied:,.0f}) + ΔRE"
-        story.append(Spacer(1, 0.1*inch))
-
-        # Check latest year for balance
-        latest_bs = self.model.historical_balance_sheets[-1]
-        assets = latest_bs.total_assets
-        liabilities_equity = latest_bs.total_liabilities + (latest_bs.total_shareholders_equity or 0)
-        diff = assets - liabilities_equity
-        
-        checks_data = [
-            ['Check', 'Formula', 'Status', 'Difference'],
-            ['Balance Sheet', 'Assets = Liab + Equity', '✓ OK' if abs(diff) < 1 else '❌ ERROR', f"${diff:,.0f}"]
-        ]
-        
-        # Add checks for linking
-        # Net Income -> Retained Earnings delta (simplified check)
-        # Cash Flow -> Cash delta
-        
-        if self.model.validation_errors:
-             for error in self.model.validation_errors:
-                 checks_data.append(['Validation Error', error, '❌ FAIL', '-'])
-        else:
-             checks_data.append(['All Checks', 'Full Model Scan', '✓ PASS', '-'])
-
-        table = Table(checks_data, colWidths=[2*inch, 2.5*inch, 1*inch, 1.5*inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4788')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('TEXTCOLOR', (2, 1), (2, -1), colors.green), # Default to green
-        ]))
-        
-        # Color red if error
-        for i, row in enumerate(checks_data[1:], 1):
-            if 'ERROR' in row[2] or 'FAIL' in row[2]:
-                table.setStyle(TableStyle([('TEXTCOLOR', (2, i), (2, i), colors.red)]))
-
-        story.append(table)
-        
-        return story
     
     def _create_forecast_section(self) -> List:
         """Create forecast section."""
@@ -990,33 +949,6 @@ class ReportGenerator:
         ]))
         
         story.append(table)
-        
-        return story
-    
-
-    def _create_charts_section(self) -> List:
-        """Create charts and visualizations section."""
-        story = []
-        
-        story.append(Paragraph("Financial Dashboard", self.styles['Heading1']))
-        story.append(Spacer(1, 0.2*inch))
-        
-        # 1. Revenue & Net Income Trend
-        rev_img = self._create_revenue_profit_chart()
-        if rev_img:
-            story.append(rev_img)
-            story.append(Spacer(1, 0.3*inch))
-        
-        # 2. Margins Analysis
-        margin_img = self._create_margins_chart()
-        if margin_img:
-            story.append(margin_img)
-            story.append(Spacer(1, 0.3*inch))
-            
-        # 3. Cost Structure (Stacked)
-        cost_img = self._create_cost_structure_chart()
-        if cost_img:
-            story.append(cost_img)
         
         return story
     

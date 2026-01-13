@@ -3,31 +3,37 @@ PDF Parser module for extracting text, tables, and structure from financial repo
 Supports both digital PDFs and scanned documents (OCR).
 """
 
-from loguru import logger
-
+# Standard library
+import gc
 import io
-import re
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+from ..config import config
+
+# Third-party
+import camelot
 import pdfplumber
 import pytesseract
+from loguru import logger
+from PIL import Image
+from PyPDF2 import PdfReader
 
 try:
     from pdf2image import convert_from_path
     HAS_PDF2IMAGE = True
 except ImportError:
     HAS_PDF2IMAGE = False
-    # Use print if logger not configured yet, or simple warning
-    print("Warning: pdf2image not found. OCR capabilities will be limited.")
+    logger.warning("pdf2image not found. OCR capabilities will be limited.")
 
-from PIL import Image
-from PyPDF2 import PdfReader
-import camelot
-import tabula
-
-from loguru import logger
+# Note: tabula-py requires Java runtime
+try:
+    import tabula
+    HAS_TABULA = True
+except ImportError:
+    HAS_TABULA = False
 
 
 class PDFParser:
@@ -162,7 +168,7 @@ class PDFParser:
         
         try:
             # Convert PDF to images
-            images = convert_from_path(str(self.pdf_path), dpi=300)
+            images = convert_from_path(str(self.pdf_path), dpi=config.pdf.OCR_DPI)
             
             for i, image in enumerate(images):
                 # Perform OCR
@@ -170,40 +176,12 @@ class PDFParser:
                 pages.append(text)
                 logger.debug(f"OCR page {i+1}: {len(text)} chars")
         except Exception as e:
-            logger.error(f"Error in OCR extraction: {e}")
-            raise
-        
-        return pages
-    
-    def _extract_tables(self) -> List[Dict]:
-        """
-        Extract tables from PDF using targeted and lightweight methods.
-        Uses identified structure to target heavy extraction only on relevant pages.
-        """
-        all_tables = []
-        target_pages = []
-        
-        # 1. Determine target pages from structure
-        structure = self._analyze_structure()
-        for section in structure.values():
-            if section.get('found') and section.get('page'):
-                target_pages.append(section['page'])
-        
-        # Add surrounding pages just in case
-        extra_pages = []
-        for p in target_pages:
-            extra_pages.extend([p+1, p+2])
-        target_pages = sorted(list(set(target_pages + extra_pages)))
-        target_pages_str = ",".join(map(str, target_pages)) if target_pages else "1-5" # Default to first 5 if none found
-
-        logger.info(f"Targeting table extraction on pages: {target_pages or 'default 1-5'}")
-
         # Method 1: pdfplumber (Fastest & Lightest - Use for ALL pages)
         try:
             with pdfplumber.open(self.pdf_path) as pdf:
                 for page_num, page in enumerate(pdf.pages):
                     # Only check first 20 pages or target pages to save memory on huge PDFs
-                    if page_num > 20 and (page_num + 1) not in target_pages:
+                    if page_num > config.pdf.MAX_PAGES_FOR_TABLES and (page_num + 1) not in target_pages:
                         continue
                         
                     tables = page.extract_tables()

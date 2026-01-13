@@ -20,6 +20,7 @@ from ..models.schemas import (
     FinancialRatios,
     AccountingStandard
 )
+from ..config import config
 
 
 class ModelEngine:
@@ -76,10 +77,11 @@ class ModelEngine:
         hist_op_margin = max(-0.50, min(0.80, hist_op_margin))  # Allow negative op margin for growth companies
         
         # Calculate CAPEX % from historical CF if available
-        hist_capex_pct = 0.05
+        # Calculate CAPEX % of Revenue
+        hist_capex_pct = config.defaults.CAPEX_PERCENT_OF_REVENUE
         if last_cf and last_cf.capital_expenditures and last_inc.revenue > 0:
             hist_capex_pct = abs(last_cf.capital_expenditures) / last_inc.revenue
-            hist_capex_pct = max(0.01, min(0.20, hist_capex_pct))  # Clamp 1-20%
+            hist_capex_pct = max(config.thresholds.MIN_CAPEX_PERCENT, min(config.thresholds.MAX_CAPEX_PERCENT, hist_capex_pct))
         
         # Calculate dividend payout ratio
         hist_div_payout = 0.0
@@ -88,9 +90,10 @@ class ModelEngine:
             hist_div_payout = min(1.0, hist_div_payout)  # Cap at 100%
         
         # Calculate working capital days from historical BS
-        hist_dso = 45
-        hist_dio = 60
-        hist_dpo = 30
+        hist_dso = config.defaults.DAYS_SALES_OUTSTANDING
+        hist_dio = config.defaults.DAYS_INVENTORY_OUTSTANDING
+        hist_dpo = config.defaults.DAYS_PAYABLE_OUTSTANDING
+        
         if last_bs.accounts_receivable and last_inc.revenue > 0:
             hist_dso = int((last_bs.accounts_receivable / last_inc.revenue) * 365)
         if last_bs.inventory and last_inc.cost_of_revenue and last_inc.cost_of_revenue > 0:
@@ -113,7 +116,7 @@ class ModelEngine:
             historical_cash_flows=self.statements.cash_flow_statements,
             historical_ratios=historical_ratios,
             assumptions=ForecastAssumptions(
-                revenue_growth_rate=0.05,  # Conservative default
+                revenue_growth_rate=config.defaults.REVENUE_GROWTH_RATE,
                 gross_margin=hist_gross_margin,
                 operating_margin=hist_op_margin,
                 net_margin=hist_net_margin,

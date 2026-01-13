@@ -4,6 +4,10 @@ import requests
 from loguru import logger
 from typing import Optional, Dict, List
 import pandas as pd
+import time
+
+from ..config import config
+from ..exceptions import MarketDataError
 
 class MarketDataProvider:
     """
@@ -22,8 +26,8 @@ class MarketDataProvider:
             # Clean name for better search
             clean_name = name.replace("INC.", "").replace("CORP.", "").replace("CORPORATION", "").strip()
             url = f"https://query2.finance.yahoo.com/v1/finance/search?q={clean_name}"
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=5)
+            headers = {'User-Agent': config.api.YFINANCE_USER_AGENT}
+            response = requests.get(url, headers=headers, timeout=config.api.YFINANCE_TIMEOUT)
             data = response.json()
             
             if data['quotes']:
@@ -41,7 +45,9 @@ class MarketDataProvider:
         """Fetch market data for a given ticker with robust fallbacks."""
         logger.info(f"Fetching market data for {ticker}...")
         try:
-            stock = yf.Ticker(ticker)
+            # Rate limiting
+            time.sleep(config.api.REQUEST_DELAY_SECONDS)
+                        stock = yf.Ticker(ticker)
             
             # Try to get info safely
             info = {}

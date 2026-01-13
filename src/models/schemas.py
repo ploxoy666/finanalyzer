@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, Field, validator
 
+from ..config import config
+
 
 class AccountingStandard(str, Enum):
     """Accounting standards enumeration."""
@@ -301,24 +303,24 @@ class ForecastAssumptions(BaseModel):
     net_margin: Optional[float] = None
     
     # Tax
-    tax_rate: float = Field(default=0.21, description="Effective tax rate")
+    tax_rate: float = Field(default=config.defaults.TAX_RATE, description="Effective tax rate")
     
     # CAPEX & Depreciation
-    capex_percent_of_revenue: float = Field(default=0.05)
-    depreciation_percent_of_ppe: float = Field(default=0.10)
+    capex_percent_of_revenue: float = Field(default=config.defaults.CAPEX_PERCENT_OF_REVENUE)
+    depreciation_percent_of_ppe: float = Field(default=config.defaults.DEPRECIATION_PERCENT_OF_PPE)
     
     # Working Capital
-    days_sales_outstanding: int = Field(default=45)
-    days_inventory_outstanding: int = Field(default=60)
-    days_payable_outstanding: int = Field(default=30)
+    days_sales_outstanding: int = Field(default=config.defaults.DAYS_SALES_OUTSTANDING)
+    days_inventory_outstanding: int = Field(default=config.defaults.DAYS_INVENTORY_OUTSTANDING)
+    days_payable_outstanding: int = Field(default=config.defaults.DAYS_PAYABLE_OUTSTANDING)
     dividend_payout_ratio: float = Field(default=0.0, description="Percentage of net income paid as dividends")
     
     # DCF / WACC Specific (NEW)
-    risk_free_rate: float = Field(default=0.04)
-    equity_risk_premium: float = Field(default=0.05)
-    beta: float = Field(default=1.0)
-    cost_of_debt: float = Field(default=0.05)
-    terminal_growth_rate: float = Field(default=0.025)
+    risk_free_rate: float = Field(default=config.defaults.RISK_FREE_RATE)
+    equity_risk_premium: float = Field(default=config.defaults.EQUITY_RISK_PREMIUM)
+    beta: float = Field(default=config.defaults.BETA)
+    cost_of_debt: float = Field(default=config.defaults.COST_OF_DEBT)
+    terminal_growth_rate: float = Field(default=config.defaults.TERMINAL_GROWTH_RATE)
     wacc: Optional[float] = None
     
     # Scenario

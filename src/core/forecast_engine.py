@@ -22,6 +22,7 @@ from ..models.schemas import (
     DCFYearData,
     DCFValuation
 )
+from ..config import config, ScenarioType, Recommendation
 
 
 class ForecastEngine:
@@ -69,6 +70,14 @@ class ForecastEngine:
         
         # Adjust assumptions based on scenario
         self._adjust_for_scenario(scenario)
+        
+        # Validate that we have historical data to base forecast on
+        if not self.model.historical_income_statements:
+            raise ValueError("Cannot forecast: No historical income statements available")
+        if not self.model.historical_balance_sheets:
+            raise ValueError("Cannot forecast: No historical balance sheets available")
+        if not self.model.historical_cash_flows:
+            raise ValueError("Cannot forecast: No historical cash flow statements available")
         
         # Get base year data
         base_income = self.model.historical_income_statements[-1]
@@ -204,14 +213,14 @@ class ForecastEngine:
         """Adjust assumptions based on scenario."""
         assumptions = self.model.assumptions
         
-        if scenario == "bull":
+        if scenario == ScenarioType.BULL:
             # Optimistic scenario
             assumptions.revenue_growth_rate *= 1.5
-            assumptions.gross_margin = min(assumptions.gross_margin * 1.1, 0.95)
-            assumptions.operating_margin = min(assumptions.operating_margin * 1.1, 0.90)
+            assumptions.gross_margin = min(assumptions.gross_margin * 1.1, config.thresholds.MAX_GROSS_MARGIN)
+            assumptions.operating_margin = min(assumptions.operating_margin * 1.1, config.thresholds.MAX_OPERATING_MARGIN)
             logger.info("Applied bull scenario adjustments")
             
-        elif scenario == "bear":
+        elif scenario == ScenarioType.BEAR:
             # Pessimistic scenario
             assumptions.revenue_growth_rate *= 0.5
             assumptions.gross_margin *= 0.9
@@ -625,48 +634,45 @@ class ForecastEngine:
         equity_value = enterprise_value - net_debt
         
         # Sanity Check for negative valuation
+        # Sanity Check for negative valuation
         if equity_value < 0:
             logger.warning(f"Calculated negative equity value: {equity_value}. Clamping to 0 for valuation.")
+            # We could raise NegativeValuationError here if we wanted strict mode
             equity_value = 0
             
         mkt = self.model.market_data or {}
         
         # Get shares from multiple sources with proper fallback chain
-        # Priority: 1. Market data, 2. Income Statement diluted, 3. Income Statement basic
         shares = mkt.get('shares_outstanding')
         
         if not shares or shares <= 0:
-            # Try to get from latest historical income statement
             latest_inc = self.model.historical_income_statements[-1]
             shares = latest_inc.shares_outstanding_diluted or latest_inc.shares_outstanding_basic or 0
         
         if not shares or shares <= 0:
-            # Try forecast income statement
             if self.model.forecast_income_statements:
                 fc_inc = self.model.forecast_income_statements[-1]
                 shares = fc_inc.shares_outstanding_diluted or fc_inc.shares_outstanding_basic or 0
         
-        # Handle unit conversion (if shares seem to be in millions or billions)
+        # Handle unit conversion
         if shares > 0:
-            # If shares < 1000, likely reported in millions/billions
-            if shares < 1000:
-                shares *= 1e6  # Convert millions to actual count
-                logger.info(f"Converted shares from millions: {shares/1e6:.1f}M -> {shares:,.0f}")
-            elif shares < 1e6:
-                shares *= 1e6  # Also likely in millions
-                logger.info(f"Converted shares from millions: {shares/1e6:.1f}M -> {shares:,.0f}")
+            # Check threshold (e.g., < 1M usually means reported in millions)
+            if shares < config.thresholds.SHARES_MILLIONS_THRESHOLD:
+                original_shares = shares
+                shares *= 1e6
+                logger.info(f"Converted shares from millions: {original_shares:,.2f}M -> {shares:,.0f}")
         
-        # Final fallback if still no valid shares
+        # Final fallback
         if not shares or shares <= 0:
-            logger.warning("Could not determine shares outstanding. Using fallback of 1B shares.")
-            shares = 1e9
+            logger.warning(f"Could not determine shares outstanding. Using fallback of {config.defaults.FALLBACK_SHARES_OUTSTANDING:,.0f}.")
+            shares = config.defaults.FALLBACK_SHARES_OUTSTANDING
         
         implied_price = equity_value / shares if shares > 0 else 0
         
         logger.info(f"DCF: Equity Value=${equity_value/1e6:,.0f}M, Shares={shares/1e6:,.1f}M, Implied Price=${implied_price:,.2f}")
         
         # Final Sanity Check for Target Price
-        if implied_price > 10000:  # Unrealistic unless Berkshire
+        if implied_price > config.thresholds.MAX_REASONABLE_STOCK_PRICE:
             if mkt.get('current_price') and implied_price > mkt['current_price'] * 10:
                 logger.warning(f"Target price {implied_price} seems unrealistic. Capping.")
                 implied_price = mkt['current_price'] * 2.0
