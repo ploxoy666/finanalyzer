@@ -16,25 +16,61 @@ class FinancialExtractor:
         self.full_text = "\n".join(text_by_page.values())
         
         # Mapping of standardized fields to common regex variations found in reports
+        # Mapping of standardized fields to common regex variations found in reports
         self.patterns = {
             'revenue': [
-                r'(?i)Total\s+revenue\s+[\$]?\s*([\d,]+)', 
-                r'(?i)Net\s+sales\s+[\$]?\s*([\d,]+)', 
-                r'(?i)Total\s+net\s+sales\s+[\$]?\s*([\d,]+)',
-                r'(?i)Revenue,\s+net\s+[\$]?\s*([\d,]+)'
+                r'(?i)Total\s+revenue\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Net\s+sales\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Total\s+net\s+sales\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Revenue,\s+net\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Доходы\s+от\s+реализации\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Выручка\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Общий\s+доход\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'cost_of_revenue': [
-                r'(?i)Cost\s+of\s+revenue\s+[\$]?\s*([\d,]+)', 
-                r'(?i)Cost\s+of\s+sales\s+[\$]?\s*([\d,]+)',
-                r'(?i)Cost\s+of\s+goods\s+sold\s+[\$]?\s*([\d,]+)'
+                r'(?i)Cost\s+of\s+revenue\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Cost\s+of\s+sales\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Cost\s+of\s+goods\s+sold\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Себестоимость\s+реализованной\s+продукции\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Себестоимость\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
-            'gross_profit': [r'(?i)Gross\s+profit\s+[\$]?\s*([\d,]+)', r'(?i)Gross\s+margin\s+[\$]?\s*([\d,]+)'],
-            'operating_income': [r'(?i)Operating\s+income\s+[\$]?\s*([\d,]+)', r'(?i)Income\s+from\s+operations\s+[\$]?\s*([\d,]+)'],
-            'net_income': [r'(?i)Net\s+income\s+[\$]?\s*([\d,]+)', r'(?i)Net\s+earnings\s+[\$]?\s*([\d,]+)', r'(?i)Net\s+income\s+attributable\s+to\s+[\w\s]+\s+[\$]?\s*([\d,]+)'],
-            'total_assets': [r'(?i)Total\s+assets\s+[\$]?\s*([\d,]+)'],
-            'total_liabilities': [r'(?i)Total\s+liabilities\s+[\$]?\s*([\d,]+)'],
-            'total_equity': [r'(?i)Total\s+shareholders.\s+equity\s+[\$]?\s*([\d,]+)', r'(?i)Total\s+equity\s+[\$]?\s*([\d,]+)'],
-            'shares': [r'(?i)Common\s+stock\s+outstanding.*?([\d,]+)', r'(?i)shares\s+of\s+common\s+stock\s+outstanding.*?([\d,]+)', r'(?i)Weighted\s+average\s+shares.*?diluted.*?([\d,]+)'],
+            'gross_profit': [
+                r'(?i)Gross\s+profit\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Gross\s+margin\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Валовая\s+прибыль\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'operating_income': [
+                r'(?i)Operating\s+income\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Income\s+from\s+operations\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Доход\s+от\s+операционной\s+деятельности\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Операционная\s+прибыль\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'net_income': [
+                r'(?i)Net\s+income\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Net\s+earnings\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Net\s+income\s+attributable\s+to\s+[\w\s]+\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Общий\s+совокупный\s+доход\s+за\s+год\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Прибыль\s+за\s+год\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Чистая\s+прибыль\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'total_assets': [
+                r'(?i)Total\s+assets\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Итого\s+активов\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'total_liabilities': [
+                r'(?i)Total\s+liabilities\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Итого\s+обязательств\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'total_equity': [
+                r'(?i)Total\s+shareholders.\s+equity\s+[\$]?\s*([\d,.]+)', 
+                r'(?i)Total\s+equity\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Итого\s+капитал\s+[\$]?\s*([\d\s,.\(\)]+)'
+            ],
+            'shares': [
+                r'(?i)Common\s+stock\s+outstanding.*?([\d,.]+)', 
+                r'(?i)shares\s+of\s+common\s+stock\s+outstanding.*?([\d,.]+)', 
+                r'(?i)Weighted\s+average\s+shares.*?diluted.*?([\d,.]+)'
+            ],
             'ticker': [r'(?i)\(?(NASDAQ|NYSE|OTC|TSX)\s*:\s*([A-Z]+)\)?', r'(?i)Symbol\s*:\s*([A-Z]+)']
         }
 
@@ -221,6 +257,11 @@ class FinancialExtractor:
         match = re.search(r'([A-Z][A-Z\s,&]+(?:INC\.|CORP\.|CORPORATION))', first_page)
         if match:
             return match.group(1).strip()
+            
+        # 4. Russian Entity Types
+        match = re.search(r'(?:ТОО|АО|ООО|ПАО)\s+[«"]?([\w\s-]+)[»"]?', first_page, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
 
         return "Unknown Company" # Generic fallback
 
@@ -240,6 +281,8 @@ class FinancialExtractor:
             return ReportType.FORM_10Q
         if "FORM 10-K" in text_head or "ANNUAL REPORT" in text_head:
             return ReportType.FORM_10K
+        if "ОТЧЕТ" in text_head or "ОТЧЁТ" in text_head:
+            return ReportType.FORM_10K
         return ReportType.FORM_10K # Default
 
     def _extract_fiscal_year(self) -> int:
@@ -247,7 +290,9 @@ class FinancialExtractor:
         patterns = [
             r'fiscal year ended.*?20(\d{2})',
             r'quarter ended.*?20(\d{2})',
-            r'For the quarterly period ended.*?20(\d{2})'
+            r'For the quarterly period ended.*?20(\d{2})',
+            r'(?:год|года),?\s+закончившийся.*?20(\d{2})',
+            r'за.*?20(\d{2})\s+год'
         ]
         for p in patterns:
             match = re.search(p, self.full_text, re.IGNORECASE)
@@ -255,22 +300,74 @@ class FinancialExtractor:
                 return int("20" + match.group(1))
         return 2024 # Default
 
+        return 0.0
+
+    def _parse_number(self, val_str: str) -> float:
+        """Robust number parser handling multi-format (EU/RU dots, parens)."""
+        if not val_str: return 0.0
+        s = val_str.strip()
+        # Handle negative in parens (123) -> -123
+        if s.startswith('(') and s.endswith(')'):
+            s = '-' + s[1:-1]
+        
+        # Remove spaces (common as thousands sep)
+        s = s.replace(' ', '').replace('\xa0', '') 
+        
+        # Heuristic for delimiters
+        if '.' in s and ',' in s:
+            if s.rfind('.') > s.rfind(','): # 1,234.56 -> US
+                s = s.replace(',', '')
+            else: # 1.234,56 -> EU/RU
+                s = s.replace('.', '').replace(',', '.')
+        elif ',' in s:
+            if s.count(',') > 1: s = s.replace(',', '')
+            else: s = s.replace(',', '.') 
+        elif '.' in s:
+            # If multiple dots, it's thousands: 1.234.567
+            if s.count('.') > 1: s = s.replace('.', '')
+            # If single dot, check context. Usually decimal if US, but could be thousands in RU.
+            # But in regex we usually capture digits and separators.
+            # Assuming if regex matched [\d,.]+, and it has 1 dot, let's look at length.
+            # For now, default to decimal if single dot, UNLESS it results in tiny profit vs known scale.
+            # But here we don't know scale. Let's assume decimal for single dot standardly.
+            pass
+            
+        import re
+        s = re.sub(r'[^\d.-]', '', s)
+        try:
+            return float(s)
+        except:
+            return 0.0
+
     def _find_value(self, patterns: List[str]) -> float:
         """Finds the first numeric value matching the patterns."""
         for pattern in patterns:
             # Look for pattern followed by number. 
-            # Often numbers are like "1,234" or "(1,234)" or "1,234 million"
             matches = re.findall(pattern, self.full_text, re.IGNORECASE)
             if matches:
-                # Take the last match as it's often the 'current year' column in tables
-                # But sometimes it's the first. We try to be smart.
-                # Usually table columns are: 2023 | 2022 | 2021. So first number is latest.
-                val_str = matches[0] # Take first match
+                # Take the last match as it's often the 'current year' column in tables (usually left)
+                # But sometimes regex captures "Revenue ... 2016 ... 2015".
+                # Regex patterns above capture a single group at the end.
+                # In Russian tables: "Доходы ... 7.243.659 ... 4.977.019"
+                # To capture the FIRST number (current year), we depend on the regex.
+                # My regexes above generally grab the number immediately following the label.
+                # If there are multiple columns, regex might stop at the first one if greedy?
+                # Actually [\d\s,.]+ will capture "7.243.659   4.977.019".
+                # We need to split that.
                 
-                # Cleanup
-                val_str = val_str.replace(',', '').replace('(', '-').replace(')', '')
-                try:
-                    return float(val_str) * 1_000_000 # Assume millions usually
-                except ValueError:
-                    continue
+                val_raw = matches[0] 
+                # If val_raw contains multiple numbers separated by space?
+                # "7.243.659   4.977.019"
+                parts = val_raw.strip().split()
+                if len(parts) > 1:
+                    # Usually first column is current year in these reports
+                    val_str = parts[0]
+                else:
+                    val_str = val_raw
+                
+                parsed = self._parse_number(val_str)
+                # Assume thousands if small number? No, usually reports say "in thousands".
+                # We can't auto-detect unit easily without reading header "in millions".
+                # For now returning raw.
+                return parsed
         return 0.0
