@@ -132,10 +132,23 @@ def _render_dashboard(model):
     """Render Executive Dashboard tab."""
     st.subheader(f"Executive Summary: {model.company_name}")
     
-    # AI Summary
+    # Styled AI Summary (Moved to top for visibility)
     if st.session_state.get("ai_summary"):
-        st.markdown("""<div class="metric-card"><h4>🤖 AI Key Findings</h4>"""
-                    f"{st.session_state.ai_summary}</div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="
+            padding: 20px; 
+            background-color: rgba(30, 41, 59, 1); 
+            border: 1px solid #334155; 
+            border-radius: 10px; 
+            margin-bottom: 20px;
+            color: #e2e8f0;
+        ">
+            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Key Findings</h3>
+            <div style="font-size: 1.05em; line-height: 1.6;">
+                {st.session_state.ai_summary}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.write("")
     
@@ -163,24 +176,6 @@ def _render_dashboard(model):
     
     st.markdown("---")
     
-    # AI Summary Card (Styled for visibility)
-    if st.session_state.get("ai_summary"): # Changed from model.ai_summary to st.session_state.get("ai_summary") to match existing logic
-        st.markdown(f"""
-        <div style="
-            padding: 20px; 
-            background-color: rgba(30, 41, 59, 1); 
-            border: 1px solid #334155; 
-            border-radius: 10px; 
-            margin-bottom: 20px;
-            color: #e2e8f0;
-        ">
-            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Key Findings</h3>
-            <div style="font-size: 1.05em; line-height: 1.6;">
-                {st.session_state.ai_summary}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
     # Charts (Placeholder for now, can add Plotly later)
     st.info("Visualizations are generated in the Report tab.")
 
@@ -200,11 +195,21 @@ def _render_financials(model):
     
     # Display Forecast Table
     rows = []
+    
+    # Initial previous revenue for growth calc
+    prev_revenue = model.historical_income_statements[-1].revenue if model.historical_income_statements else 0
+    
     for inc in model.forecast_income_statements:
+        # Calculate growth
+        growth = 0.0
+        if prev_revenue and prev_revenue > 0:
+            growth = (inc.revenue - prev_revenue) / prev_revenue
+        prev_revenue = inc.revenue
+        
         rows.append({
             "Year": inc.period_end.year,
             "Revenue": f"${inc.revenue:,.0f}",
-            "Growth": f"{inc.revenue_growth:.1%}",
+            "Growth": f"{growth:.1%}",
             "Net Income": f"${inc.net_income:,.0f}"
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
