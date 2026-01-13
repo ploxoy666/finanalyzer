@@ -220,13 +220,19 @@ def _render_valuation(model):
     st.subheader("Discounted Cash Flow (DCF)")
     
     c1, c2 = st.columns(2)
-    c1.metric("WACC", f"{model.assumptions.wacc:.1%}")
-    c1.metric("Terminal Growth", f"{model.assumptions.terminal_growth_rate:.1%}")
+    # Safe rendering for assumptions
+    wacc = model.assumptions.wacc if model.assumptions and model.assumptions.wacc is not None else 0.0
+    term_growth = model.assumptions.terminal_growth_rate if model.assumptions and model.assumptions.terminal_growth_rate is not None else 0.0
     
-    c2.metric("Enterprise Value", f"${dcf.enterprise_value:,.0f}")
-    c2.metric("Equity Value", f"${dcf.equity_value:,.0f}")
+    c1.metric("WACC", f"{wacc:.1%}")
+    c1.metric("Terminal Growth", f"{term_growth:.1%}")
     
-    st.metric("Implied Price per Share", f"${dcf.implied_price_per_share:,.2f}")
+    if dcf:
+        c2.metric("Enterprise Value", f"${dcf.enterprise_value:,.0f}")
+        c2.metric("Equity Value", f"${dcf.equity_value:,.0f}")
+        st.metric("Implied Price per Share", f"${dcf.implied_price_per_share:,.2f}")
+    else:
+        st.warning("DCF Valuation could not be computed.")
 
 def _render_ai_analysis(model):
     """Render AI Analysis tab."""

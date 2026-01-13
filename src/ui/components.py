@@ -5,7 +5,7 @@ Reusable UI Components for Streamlit App.
 import streamlit as st
 import pandas as pd
 from typing import Optional, Dict
-from ..config import config
+from ..config import config, AnalysisMode
 
 def render_sidebar():
     """Render the application sidebar."""
@@ -18,9 +18,10 @@ def render_sidebar():
         st.markdown("### 🛠️ Navigation Mode")
         mode = st.radio(
             "Choose Analysis Type", 
-            [m.value for m in config.AnalysisMode],
+            [m.value for m in AnalysisMode],
             key="app_mode_selection"
         )
+        
         
         # Update session state
         st.session_state.app_mode = mode
@@ -71,53 +72,86 @@ def render_export_utility(
         st.info("💡 Pro Tip: You can also generate a full PDF report in the 'Report Generation' tab.")
 
 def apply_custom_css():
-    """Apply custom CSS styles to the application."""
+    """Apply custom CSS styles to the application (Premium Dark Theme)."""
     st.markdown("""
         <style>
-            .main {
-                background-color: #f8f9fa;
+            /* Main App Background - Let Streamlit handled dark mode, but enhance contrast */
+            .stApp {
+                /* background-color: #0f172a; Removed to respect user preference, but we style components for dark mode */
             }
+            
+            /* Buttons */
             .stButton>button {
                 width: 100%;
                 border-radius: 8px;
                 height: 3em;
-                background-color: #1f4788;
+                background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
                 color: white;
-                font-weight: bold;
+                font-weight: 600;
+                border: none;
                 transition: all 0.3s ease;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             }
             .stButton>button:hover {
-                background-color: #2d5aa0;
-                border-color: #2d5aa0;
+                background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
                 transform: translateY(-2px);
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                box-shadow: 0 6px 12px rgba(37, 99, 235, 0.4);
             }
-            .metric-card {
-                background-color: white;
-                padding: 1.5rem;
-                border-radius: 10px;
-                border: 1px solid #e9ecef;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            
+            /* Metric Cards & Containers (Glassmorphism) */
+            .metric-card, div[data-testid="stMetric"], div[data-testid="metric-container"] {
+                background-color: rgba(30, 41, 59, 0.4);
+                padding: 1rem;
+                border-radius: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.1);
+                backdrop-filter: blur(10px);
             }
+            
+            /* Typography */
             h1, h2, h3 {
-                color: #1f4788;
-                font-family: 'Helvetica Neue', sans-serif;
+                color: #e2e8f0 !important;
+                font-family: 'Inter', sans-serif;
+                font-weight: 700;
             }
+            p, label, .stMarkdown {
+                color: #cbd5e1;
+            }
+            
+            /* Tabs Styling - CRITICAL FIX */
             .stTabs [data-baseweb="tab-list"] {
-                gap: 24px;
-            }
-            .stTabs [data-baseweb="tab"] {
-                height: 50px;
-                white-space: pre-wrap;
-                background-color: white;
-                border-radius: 4px 4px 0px 0px;
-                gap: 1px;
-                padding-top: 10px;
+                gap: 10px;
+                background-color: transparent;
                 padding-bottom: 10px;
             }
+            
+            .stTabs [data-baseweb="tab"] {
+                height: 45px;
+                white-space: pre-wrap;
+                background-color: rgba(30, 41, 59, 0.5); /* Semi-transparent dark */
+                color: #94a3b8; /* Dimmed text */
+                border-radius: 8px;
+                border: 1px solid rgba(148, 163, 184, 0.1);
+                padding: 0 20px;
+                transition: all 0.2s;
+            }
+            
             .stTabs [aria-selected="true"] {
-                background-color: #f0f2f6;
-                border-bottom: 2px solid #1f4788;
+                background-color: #1e3a8a !important; /* Active Tab Background */
+                color: #60a5fa !important; /* Active Tab Text */
+                border: 1px solid #3b82f6 !important;
+            }
+            
+            /* File Uploader */
+            section[data-testid="stFileUploader"] {
+                background-color: rgba(30, 41, 59, 0.3);
+                border-radius: 12px;
+                padding: 20px;
+                border: 1px dashed #475569;
+            }
+            
+            /* Charts */
+            .js-plotly-plot .plotly .modebar {
+                background: transparent !important;
             }
         </style>
     """, unsafe_allow_html=True)
