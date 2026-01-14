@@ -33,6 +33,7 @@ from .components import render_export_utility
 def render_report_analyzer():
     """Render the main Deep Report Intelligence interface."""
     st.markdown("## 📄 Deep Report Intelligence")
+    st.caption("Engine Version: v3.2 | Real-Value Calibration Enabled | Full-Number Formatting Forced")
     st.info("Upload 10-K/10-Q PDF files for full automated analysis, 3-statement modeling, and valuation.")
     
     # File Uploader
@@ -154,16 +155,21 @@ def _process_file_upload(uploaded_file):
                 st.session_state.current_scale = initial_scale_name
                 st.session_state.analysis_complete = True
                 
-                # 6. AI Analysis (Async-like)
+                # 6. AI Analysis (Async-like) - Wrap in try/except to prevent crash
                 if AI_AVAILABLE:
-                    status.write("🧠 Running AI Sentiment & Risk Analysis...")
-                    summarizer = FinancialSummarizer(api_key=config.api.HF_API_KEY)
-                    sentiment = SentimentAnalyzer(api_key=config.api.HF_API_KEY)
-                    
-                    full_text = data['text']
-                    st.session_state.ai_summary = summarizer.summarize(full_text)
-                    st.session_state.ai_risks = summarizer.extract_risks(full_text)
-                    st.session_state.ai_sentiment = sentiment.analyze_report(data['pages'])
+                    try:
+                        status.write("🧠 Running AI Sentiment & Risk Analysis...")
+                        summarizer = FinancialSummarizer(api_key=config.api.HF_API_KEY)
+                        sentiment = SentimentAnalyzer(api_key=config.api.HF_API_KEY)
+                        
+                        full_text = data['text']
+                        st.session_state.ai_summary = summarizer.summarize(full_text)
+                        st.session_state.ai_risks = summarizer.extract_risks(full_text)
+                        st.session_state.ai_sentiment = sentiment.analyze_report(data['pages'])
+                    except Exception as ai_err:
+                        logger.error(f"AI Analysis failed: {ai_err}")
+                        st.session_state.ai_summary = "AI Summary temporarily unavailable."
+                        st.session_state.ai_risks = ["Analysis bypassed."]
                 
                 # Store results
                 st.session_state.model = final_model
@@ -236,6 +242,12 @@ def _render_dashboard(model):
     m2.metric("Gross Margin", f"{gross_margin:.1%}")
     m3.metric("Operating Margin", f"{op_margin:.1%}")
     m4.metric("Net Margin", f"{net_margin:.1%}")
+    
+    # Scale Warning
+    if latest_inc.revenue < 100000 and st.session_state.get('current_scale') == 'Actuals':
+        st.warning(f"⚠️ **Scale Alert:** Revenue is only {_format_metric(latest_inc.revenue)}. Many reports use Millions/Billions. If this looks too low, use the sidebar to change 'Data Scale' to Millions.")
+        if st.button("🚀 Quick Fix: Switch to Millions"):
+            _apply_scale_and_rebuild(1000000.0, "Millions (x1MM)")
     
     st.markdown("---")
     

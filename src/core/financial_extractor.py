@@ -322,21 +322,25 @@ class FinancialExtractor:
             return 1_000.0
             
         # 2. Heuristic Inference (Smart Fallback)
-        # If we see common labels but values are very small (e.g. Revenue < 5000) 10-K, it's likely Millions
-        # This resolves the 137, 75 issue automatically.
+        # We look for revenue specifically. If revenue is < 10000, it's 99% likely to be Millions in a corporate report.
+        # We look for patterns like "Total Revenue ..... 1,234"
         patterns = [
-            r'(?i)revenue.*?([\d\s,.]+)',
-            r'(?i)total\s+revenue.*?([\d\s,.]+)',
-            r'(?i)выручка.*?([\d\s,.]+)'
+            r'(?i)Total\s+Revenue[^\.\d%]*?([\d\s,]+)',
+            r'(?i)Revenue[^\.\d%]*?([\d\s,]+)',
+            r'(?i)Выручка[^\.\d%]*?([\d\s,]+)'
         ]
         test_val = 0
         for p in patterns:
+            # Use search to find the first occurrence which is usually the 'Current Year' in the summary
             m = re.search(p, self.full_text)
             if m:
-                test_val = self._parse_number(m.group(1))
-                break
+                extracted = self._parse_number(m.group(1))
+                if extracted > 1: # Ignore tiny values or errors
+                    test_val = extracted
+                    break
         
-        if 1 < test_val < 5000:
+        # If test_val is e.g. 137 or 1500, and it's a corporate report, assume Millions.
+        if 1 < test_val < 30000:
             logger.info(f"Scale inference: Detected small value {test_val} for revenue. Assuming Millions scale.")
             return 1_000_000.0
             

@@ -64,7 +64,6 @@ class SentimentAnalyzer:
             return {"dominant_sentiment": "neutral", "composite_score": 0.0}
             
         # Truncate text generally for API limits (usually ~XXX tokens)
-        # We take first 1500 chars which is roughly 300-400 tokens
         truncated_text = text[:1500] 
 
         if self.use_api:
@@ -72,7 +71,6 @@ class SentimentAnalyzer:
                 return self._analyze_api(truncated_text)
             except Exception as e:
                 logger.error(f"API Analysis failed: {e}. Falling back to local.")
-                # Fallback to local
                 self._load_local_model()
                 return self._analyze_local(truncated_text)
         else:
@@ -81,52 +79,41 @@ class SentimentAnalyzer:
 
     def _analyze_api(self, text: str) -> Dict:
         """Use Hugging Face Inference API."""
-        # Returns list of dicts: [{'label': 'neutral', 'score': 0.8}, ...]
-        # Or sometimes just one top label depending on params, but text_classification usually returns list.
-        # Actually client.text_classification returns a list of classification objects.
-        
         results = self.client.text_classification(text, model=self.MODEL_NAME)
-        # Result example: [{'label': 'neutral', 'score': 0.90}, {'label': 'positive', 'score': 0.05}...]
-        # Actually looking at doc, it might return just list of class scores.
-        
-        # Let's map results. Assuming standard HF output structure for text-classification task
-        # Usually it returns a list of dicts sorted by score.
-        
-        # Convert classification objects to dict
         scores_dict = {item.label: item.score for item in results}
-        
         return self._format_result(scores_dict)
 
     def _analyze_local(self, text: str) -> Dict:
         """Use local transformers model."""
-        if not self.model:
-            raise RuntimeError("Local model not loaded and transformers lib missing.")
+        if not self.model or not TRANSFORMERS_AVAILABLE:
+            logger.warning("Local model not available. Returning neutral sentiment.")
+            return {
+                "dominant_sentiment": "neutral",
+                "composite_score": 0.0,
+                "breakdown": {"positive": 0, "negative": 0, "neutral": 1.0}
+            }
             
-        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding=True)
-        
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            
-        scores = predictions[0].tolist()
-        labels = ["positive", "negative", "neutral"] # FinBERT standard config
-        
-        # Verify labels from config if possible, but ProsusAI/finbert is standard.
-        scores_dict = {label: score for label, score in zip(labels, scores)}
-        
-        return self._format_result(scores_dict)
+        try:
+            inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding=True)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+                
+            scores = predictions[0].tolist()
+            labels = ["positive", "negative", "neutral"]
+            scores_dict = {label: score for label, score in zip(labels, scores)}
+            return self._format_result(scores_dict)
+        except Exception as e:
+            logger.error(f"Local analysis error: {e}")
+            return {"dominant_sentiment": "neutral", "composite_score": 0.0, "breakdown": {"positive": 0, "negative": 0, "neutral": 1.0}}
 
     def _format_result(self, scores_dict: Dict[str, float]) -> Dict:
         """Standardize output format."""
-        
-        # Ensure all keys exist
         for k in ['positive', 'negative', 'neutral']:
             if k not in scores_dict:
                 scores_dict[k] = 0.0
                 
         dominant = max(scores_dict, key=scores_dict.get)
-        
-        # Composite score: (-1 to 1)
         composite = scores_dict['positive'] - scores_dict['negative']
         
         return {
@@ -137,6 +124,5 @@ class SentimentAnalyzer:
 
     def analyze_report(self, pages_text: List[str], max_pages: int = 5) -> Dict:
         """Analyze beginning of report."""
-        # Join first few pages
         text = " ".join(pages_text[:max_pages])
         return self.analyze(text)
