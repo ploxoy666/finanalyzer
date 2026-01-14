@@ -9,6 +9,8 @@ import os
 import tempfile
 from pathlib import Path
 from loguru import logger
+import plotly.graph_objects as go
+import plotly.express as px
 
 from ..config import config, ScenarioType
 from ..core.pdf_parser import PDFParser
