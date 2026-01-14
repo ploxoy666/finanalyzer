@@ -271,11 +271,6 @@ def _format_metric(value):
         return "N/A"
     abs_val = abs(value)
     
-    # Check if the number is already "simplified" (e.g. 137 instead of 137M)
-    # If it's small but we are looking at a multi-billion dollar company (detected by extractor), 
-    # we might want to force "mil" label. 
-    # But more robustly, we use the raw value.
-    
     if abs_val >= 1e9:
         return f"${value/1e9:,.1f} bil"
     elif abs_val >= 1e6:
@@ -283,6 +278,7 @@ def _format_metric(value):
     elif abs_val >= 1000:
         return f"${value:,.0f}" # Thousands write fully with commas
     else:
+        # For small numbers (like ratios or single digits), use decimals
         return f"${value:,.2f}" if abs_val < 100 else f"${value:,.0f}"
 
 def _render_financials(model):
@@ -457,10 +453,12 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
                      current_scenario = st.session_state.model.assumptions.scenario
 
             final_model = fc_engine.forecast(years=5, scenario=current_scenario)
+            # CRITICAL: Always regenerate advice/DCF after model update
+            final_model = fc_engine.generate_investment_advice()
             
             st.session_state.model = final_model
             st.session_state.current_scale = scale_name
-            st.success(f"Rescaled to {scale_name}")
+            st.success(f"Rescaled to {scale_name}. DCF and Forecast updated.")
             st.rerun()
             
         except Exception as e:

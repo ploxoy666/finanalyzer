@@ -72,6 +72,19 @@ class ReportGenerator:
         
         logger.info(f"Initialized ReportGenerator for {linked_model.company_name}")
     
+    def _fmt(self, value):
+        """Format large numbers with mil/bil suffixes in documentary style."""
+        if value is None: return "N/A"
+        abs_val = abs(value)
+        if abs_val >= 1e9:
+            return f"${value/1e9:,.1f} bil"
+        elif abs_val >= 1e6:
+            return f"${value/1e6:,.1f} mil"
+        elif abs_val >= 1000:
+            return f"${value:,.0f}" # Full with commas
+        else:
+            return f"${value:,.2f}" if abs_val < 100 else f"${value:,.0f}"
+
     def _setup_wall_street_styles(self):
         """Define professional financial report styles."""
         self.styles.add(ParagraphStyle(
@@ -204,10 +217,12 @@ class ReportGenerator:
             
             story.extend(self._create_forecast_section())
             
-            # DCF Analysis (Updated landscape fit)
+            # DCF Analysis (Forced landscape with clean formatting)
             if hasattr(self.model, 'dcf_valuation') and self.model.dcf_valuation:
-                # Reduce gap
-                story.append(Spacer(1, 0.1*inch))
+                # Force switch to landscape specifically for DCF
+                # (in case Forecast section pushed us to a new portrait page)
+                story.append(NextPageTemplate('Landscape'))
+                story.append(PageBreak()) 
                 story.extend(self._create_dcf_section())
             
             story.append(PageBreak())
@@ -296,10 +311,10 @@ class ReportGenerator:
         # Key metrics table
         metrics_data = [
             ['Metric', 'Value'],
-            ['Revenue', f"${latest_income.revenue:,.0f}"],
-            ['Net Income', f"${latest_income.net_income:,.0f}"],
-            ['Total Assets', f"${latest_bs.total_assets:,.0f}"],
-            ['Total Equity', f"${latest_bs.total_shareholders_equity:,.0f}" if latest_bs.total_shareholders_equity else "N/A"],
+            ['Revenue', self._fmt(latest_income.revenue)],
+            ['Net Income', self._fmt(latest_income.net_income)],
+            ['Total Assets', self._fmt(latest_bs.total_assets)],
+            ['Total Equity', self._fmt(latest_bs.total_shareholders_equity) if latest_bs.total_shareholders_equity else "N/A"],
         ]
         
         if latest_ratios:
@@ -453,7 +468,7 @@ class ReportGenerator:
         data = [
             ["Metric", "Value", "Currency"],
             ["Current Stock Price", f"${mkt.get('current_price', 0):,.2f}", mkt.get('currency', 'USD')],
-            ["Market Capitalization", f"${mkt.get('market_cap')/1e9:,.1f}B" if mkt.get('market_cap') else "N/A", mkt.get('currency', 'USD')],
+            ["Market Capitalization", self._fmt(mkt.get('market_cap')), mkt.get('currency', 'USD')],
             ["Forward P/E Ratio", f"{mkt.get('forward_pe', 0):,.1f}x" if mkt.get('forward_pe') else "N/A", "-"],
             ["Dividend Yield", f"{mkt.get('dividend_yield', 0)*100:,.2f}%" if mkt.get('dividend_yield') else "N/A", "-"]
         ]
@@ -602,7 +617,7 @@ class ReportGenerator:
             row = [label]
             for stmt in statements:
                 value = getattr(stmt, attr, None)
-                row.append(f"${value:,.0f}" if value is not None else "-")
+                row.append(self._fmt(value) if value is not None else "-")
             data.append(row)
         
         # Create table
@@ -660,7 +675,7 @@ class ReportGenerator:
                 row = [label]
                 for stmt in statements:
                     value = getattr(stmt, attr, None)
-                    row.append(f"${value:,.0f}" if value is not None else "-")
+                    row.append(self._fmt(value) if value is not None else "-")
             data.append(row)
         
         col_widths = [2.5*inch] + [1.2*inch] * len(statements)
@@ -711,7 +726,7 @@ class ReportGenerator:
                 row = [label]
                 for stmt in statements:
                     value = getattr(stmt, attr, None)
-                    row.append(f"${value:,.0f}" if value is not None else "-")
+                    row.append(self._fmt(value) if value is not None else "-")
             data.append(row)
         
         col_widths = [2.5*inch] + [1.2*inch] * len(statements)
@@ -1144,17 +1159,17 @@ class ReportGenerator:
         story.append(Spacer(1, 0.1*inch))
         
         # Table 1: Cash Flow Projections (In Millions for better fit)
-        proj_header = ["Item ($M)"] + [str(y.year) for y in dcf.forecast_period_fcf]
+        proj_header = ["Item"] + [str(y.year) for y in dcf.forecast_period_fcf]
         projected_data = [
             proj_header,
-            ["EBIT"] + [f"{y.ebit/1e6:,.0f}" for y in dcf.forecast_period_fcf],
-            ["- Taxes"] + [f"({y.tax_expense/1e6:,.0f})" for y in dcf.forecast_period_fcf],
-            ["NOPAT"] + [f"{y.nopat/1e6:,.0f}" for y in dcf.forecast_period_fcf],
-            ["+ D&A"] + [f"{y.depreciation_amortization/1e6:,.0f}" for y in dcf.forecast_period_fcf],
-            ["- CapEx"] + [f"({y.capex/1e6:,.0f})" for y in dcf.forecast_period_fcf],
-            ["- Δ NWC"] + [f"({y.change_in_nwc/1e6:,.0f})" for y in dcf.forecast_period_fcf],
-            ["Free Cash Flow"] + [f"{y.free_cash_flow/1e6:,.0f}" for y in dcf.forecast_period_fcf],
-            ["PV of FCF"] + [f"{y.pv_of_fcf/1e6:,.0f}" for y in dcf.forecast_period_fcf]
+            ["EBIT"] + [self._fmt(y.ebit) for y in dcf.forecast_period_fcf],
+            ["- Taxes"] + [self._fmt(-y.tax_expense) for y in dcf.forecast_period_fcf],
+            ["NOPAT"] + [self._fmt(y.nopat) for y in dcf.forecast_period_fcf],
+            ["+ D&A"] + [self._fmt(y.depreciation_amortization) for y in dcf.forecast_period_fcf],
+            ["- CapEx"] + [self._fmt(-y.capex) for y in dcf.forecast_period_fcf],
+            ["- Δ NWC"] + [self._fmt(-y.change_in_nwc) for y in dcf.forecast_period_fcf],
+            ["Free Cash Flow"] + [self._fmt(y.free_cash_flow) for y in dcf.forecast_period_fcf],
+            ["PV of FCF"] + [self._fmt(y.pv_of_fcf) for y in dcf.forecast_period_fcf]
         ]
         
         # Calculate column widths to fit landscape (10.5 inches available with reduced margins)
@@ -1184,15 +1199,15 @@ class ReportGenerator:
         story.append(Spacer(1, 0.15*inch))
         
         # Table 2: Valuation Bridge
-        story.append(Paragraph("Intrinsic Value Breakdown ($ Millions)", self.styles['WS_Heading2']))
+        story.append(Paragraph("Intrinsic Value Breakdown", self.styles['WS_Heading2']))
         bridge_data = [
             ["Item", "Value"],
-            ["Sum of PV of Forecast Period FCF", f"{dcf.sum_pv_fcf/1e6:,.0f}"],
-            ["PV of Terminal Value", f"{dcf.pv_terminal_value/1e6:,.0f}"],
-            ["Enterprise Value (EV)", f"{dcf.enterprise_value/1e6:,.0f}"],
-            ["- Net Debt (Debt - Cash)", f"({dcf.net_debt/1e6:,.0f})"],
-            ["Equity Value", f"{dcf.equity_value/1e6:,.0f}"],
-            ["Total Shares Outstanding", f"{dcf.shares_outstanding/1e6:,.1f}M"],
+            ["Sum of PV of Forecast Period FCF", self._fmt(dcf.sum_pv_fcf)],
+            ["PV of Terminal Value", self._fmt(dcf.pv_terminal_value)],
+            ["Enterprise Value (EV)", self._fmt(dcf.enterprise_value)],
+            ["- Net Debt (Debt - Cash)", self._fmt(dcf.net_debt)],
+            ["Equity Value", self._fmt(dcf.equity_value)],
+            ["Total Shares Outstanding", f"{dcf.shares_outstanding/1e6:,.1f} mil"],
             ["Implied Price Per Share", f"${dcf.implied_price_per_share:,.2f}"]
         ]
         
