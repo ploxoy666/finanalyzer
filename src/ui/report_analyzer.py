@@ -180,6 +180,8 @@ def _render_dashboard(model):
     
     # Charts Section
     st.subheader("Financial Trends")
+    import plotly.graph_objects as go
+    import pandas as pd
     
     if len(model.historical_income_statements) > 0:
         hist_data = {
