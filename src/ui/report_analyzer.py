@@ -54,6 +54,29 @@ def render_report_analyzer():
             "📥 Report Generation"
         ])
         
+        # Data Adjustment Sidebar
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown("### 🛠️ Data Adjustments")
+            
+            # Scale Selector
+            scale_options = {
+                "Actuals": 1.0,
+                "Thousands (x1k)": 1000.0,
+                "Millions (x1MM)": 1000000.0,
+                "Billions (x1B)": 1000000000.0
+            }
+            current_scale_key = st.session_state.get("current_scale", "Actuals")
+            selected_scale = st.selectbox(
+                "Report Units (Source)", 
+                list(scale_options.keys()), 
+                index=list(scale_options.keys()).index(current_scale_key) if current_scale_key in scale_options else 0,
+                help="If the report lists figures as '137' for $137M, select 'Millions'."
+            )
+            
+            if selected_scale != current_scale_key:
+                _apply_scale_and_rebuild(selected_scale, scale_options[selected_scale])
+
         with tab1:
             _render_dashboard(model)
             
@@ -90,8 +113,15 @@ def _process_file_upload(uploaded_file):
                 status.write("🔢 Identifying financial statements...")
                 # Fix: FinancialExtractor expects Dict[int, str], but parser returns List[str]
                 pages_dict = {i: p for i, p in enumerate(data['pages'])}
+                # Save raw statements for potential re-scaling
                 extractor = FinancialExtractor(pages_dict)
                 statements = extractor.extract()
+                
+                # Store RAW statements (unscaled) for reference
+                # We need to deepcopy because ModelEngine modifies them? No, but let's be safe.
+                import copy
+                st.session_state.raw_statements = copy.deepcopy(statements)
+                st.session_state.current_scale = "Actuals"
                 
                 # 4. Build Model
                 status.write("🏗️ Building 3-Statement Model...")
@@ -282,12 +312,30 @@ def _render_valuation(model):
     c1.metric("WACC", f"{wacc:.1%}")
     c1.metric("Terminal Growth", f"{term_growth:.1%}")
     
-    if dcf:
+    # Intreactive WACC Adjustment
+    with st.expander("⚙️ Adjust Valuation Assumptions", expanded=True):
+        new_wacc = st.slider("WACC (%)", 0.0, 20.0, float(wacc * 100), 0.1) / 100.0
+        new_tg = st.slider("Terminal Growth (%)", 0.0, 5.0, float(term_growth * 100), 0.1) / 100.0
+        
+        if new_wacc != wacc or new_tg != term_growth:
+            if st.button("Recalculate DCF"):
+                # Update assumptions and re-run forecast
+                model.assumptions.wacc = new_wacc
+                model.assumptions.terminal_growth_rate = new_tg
+                # Re-run forecast engine to update DCF
+                fc = ForecastEngine(model)
+                st.session_state.model = fc.forecast(model.forecast_years, model.selected_scenario or ScenarioType.BASE)
+                st.rerun()
+
+    if dcf and dcf.enterprise_value > 0:
         c2.metric("Enterprise Value", _format_metric(dcf.enterprise_value))
         c2.metric("Equity Value", _format_metric(dcf.equity_value))
         st.metric("Implied Price per Share", f"${dcf.implied_price_per_share:,.2f}")
     else:
-        st.warning("DCF Valuation could not be computed.")
+        if wacc == 0:
+            st.warning("⚠️ WACC is 0%. Please adjust WACC above to generate DCF.")
+        else:
+            st.warning("DCF Valuation could not be computed (Negative Cash Flows or NaN).")
 
 def _render_ai_analysis(model):
     """Render AI Analysis tab."""
@@ -330,3 +378,59 @@ def _render_report_generation(model):
                 file_name=f"{model.ticker}_Investment_Memo.pdf",
                 mime="application/pdf"
             )
+
+def _apply_scale_and_rebuild(scale_name, scale_factor):
+    """Rebuild model with scaled data."""
+    import copy
+    
+    # Avoid infinite reruns if scale is same
+    if st.session_state.get("current_scale") == scale_name:
+        return
+
+    with st.spinner(f"Rescaling data to {scale_name}..."):
+        if "raw_statements" not in st.session_state:
+            st.error("Raw data missing. Please upload a report first.")
+            return
+
+        # 1. Get Clean Copy
+        raw = copy.deepcopy(st.session_state.raw_statements)
+        
+        # 2. Multiply numeric fields
+        skip_fields = {'period_end', 'period_start', 'fiscal_year'}
+        
+        # Helper to scale object
+        def scale_obj(obj):
+            if hasattr(obj, '__dict__'):
+                for field, value in obj.__dict__.items():
+                    if field not in skip_fields and isinstance(value, (int, float)) and value is not None:
+                        # Skip small numbers that look like ratios (e.g. EPS < 1000) if scaling by Million?
+                        # No, if Shares are in millions, they must be scaled too.
+                        # If everything is 'in millions', then everything scales.
+                        # Except margins? Margins are calculated, not extracted usually.
+                        setattr(obj, field, value * scale_factor)
+        
+        for category in ['income_statements', 'balance_sheets', 'cash_flows']:
+            if category in raw:
+                for stmt in raw[category]:
+                    scale_obj(stmt)
+        
+        # 3. Rebuild
+        try:
+            model_engine = ModelEngine(raw)
+            linked_model = model_engine.build_linked_model()
+            
+            fc_engine = ForecastEngine(linked_model)
+            current_scenario = ScenarioType.BASE
+            if "model" in st.session_state and hasattr(st.session_state.model, 'selected_scenario'):
+                 if st.session_state.model.selected_scenario:
+                     current_scenario = st.session_state.model.selected_scenario
+
+            final_model = fc_engine.forecast(years=5, scenario=current_scenario)
+            
+            st.session_state.model = final_model
+            st.session_state.current_scale = scale_name
+            st.success(f"Rescaled to {scale_name}")
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Error rescaling model: {e}")
