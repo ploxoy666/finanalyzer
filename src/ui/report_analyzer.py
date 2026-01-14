@@ -111,32 +111,48 @@ def _process_file_upload(uploaded_file):
                 
                 # 3. Extract Financials
                 status.write("🔢 Identifying financial statements...")
-                # Fix: FinancialExtractor expects Dict[int, str], but parser returns List[str]
                 pages_dict = {i: p for i, p in enumerate(data['pages'])}
-                # Save raw statements for potential re-scaling
                 extractor = FinancialExtractor(pages_dict)
-                statements = extractor.extract()
                 
-                # Store RAW statements (unscaled) for reference
-                # We need to deepcopy because ModelEngine modifies them? No, but let's be safe.
+                # IMPORTANT: Store TRULY RAW statements (unscaled) for accurate re-scaling later
+                st.session_state.raw_statements = extractor.extract(apply_scale=False)
+                
+                # Detect the INITIAL scale to use it for the first build
+                detected_scale = extractor.scale_factor
+                scale_name_map = {1.0: "Actuals", 1000.0: "Thousands (x1k)", 1000000.0: "Millions (x1MM)", 1000000000.0: "Billions (x1B)"}
+                initial_scale_name = scale_name_map.get(detected_scale, "Actuals")
+                
+                # 4. Create Initial Model using detected scale
+                # We reuse the logic from _apply_scale_and_rebuild but inline for the first run
                 import copy
-                st.session_state.raw_statements = copy.deepcopy(statements)
-                st.session_state.current_scale = "Actuals"
+                raw_data = copy.deepcopy(st.session_state.raw_statements)
                 
-                # 4. Build Model
-                status.write("🏗️ Building 3-Statement Model...")
-                model_engine = ModelEngine(statements)
+                # Scale it
+                skip_fields = {'period_end', 'period_start', 'fiscal_year'}
+                for category in ['income_statements', 'balance_sheets', 'cash_flow_statements']:
+                    stmts = getattr(raw_data, category, [])
+                    for stmt in stmts:
+                        # Cross-version Pydantic field access
+                        fields = getattr(stmt, '__fields__', None) or getattr(stmt, 'model_fields', {})
+                        for field in fields:
+                            if field not in skip_fields:
+                                val = getattr(stmt, field)
+                                if isinstance(val, (int, float)) and val is not None:
+                                    setattr(stmt, field, val * detected_scale)
+                
+                model_engine = ModelEngine(raw_data)
                 linked_model = model_engine.build_linked_model()
                 
                 # 5. Forecast & Valuation
                 status.write("🔮 Generating Forecasts & DCF Valuation...")
                 fc_engine = ForecastEngine(linked_model)
-                
-                # Use default assumptions initially
                 final_model = fc_engine.forecast(years=5, scenario=ScenarioType.BASE)
-                
-                # IMPORTANT: Initial advice generation includes DCF calculation
                 final_model = fc_engine.generate_investment_advice()
+                
+                # Store results
+                st.session_state.model = final_model
+                st.session_state.current_scale = initial_scale_name
+                st.session_state.analysis_complete = True
                 
                 # 6. AI Analysis (Async-like)
                 if AI_AVAILABLE:
@@ -417,41 +433,31 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
         return
 
     with st.spinner(f"Rescaling data to {scale_name}..."):
-        # 1. Get Base Data (Always re-extract or use unscaled session state if we had it)
-        # For simplicity, we assume 'raw_statements' in session state is the BASE 1.0 scale
         if "raw_statements" not in st.session_state:
             st.error("Raw data missing. Please upload a report first.")
             return
 
-        raw = copy.deepcopy(st.session_state.raw_statements)
+        # 1. Start from TRULY RAW statements
+        raw_base = copy.deepcopy(st.session_state.raw_statements)
         
-        # 2. Multiply numeric fields ONLY if scale > 1.0 and they haven't been scaled yet
-        # Actually, let's treat 'raw_statements' as the result of PDF extraction.
-        # If extractor found 130, and user selects 'Billions', we should multiply by 1e9.
-        
+        # 2. Apply the scale factor to the raw base
         skip_fields = {'period_end', 'period_start', 'fiscal_year'}
         
-        def scale_obj(obj):
-            if hasattr(obj, '__dict__'):
-                for field, value in obj.__dict__.items():
-                    if field not in skip_fields and isinstance(value, (int, float)) and value is not None:
-                         # Shares should also scale if they are in millions/thousands
-                         setattr(obj, field, value * scale_factor)
-        
-        # Scale each statement in each category
         for category in ['income_statements', 'balance_sheets', 'cash_flow_statements']:
-            if hasattr(raw, category):
-                stmts = getattr(raw, category)
+            if hasattr(raw_base, category):
+                stmts = getattr(raw_base, category)
                 for stmt in stmts:
-                    # Robust attribute scaling for Pydantic models
-                    for field in stmt.model_fields:
-                        val = getattr(stmt, field)
-                        if field not in skip_fields and isinstance(val, (int, float)) and val is not None:
-                             setattr(stmt, field, val * scale_factor)
+                    # Support for both Pydantic v1 and v2
+                    fields = getattr(stmt, '__fields__', None) or getattr(stmt, 'model_fields', {})
+                    for field in fields:
+                        if field not in skip_fields:
+                            val = getattr(stmt, field)
+                            if isinstance(val, (int, float)) and val is not None:
+                                setattr(stmt, field, val * scale_factor)
         
         # 3. Rebuild (Full cycle: Link -> Forecast -> Advice/DCF)
         try:
-            model_engine = ModelEngine(raw)
+            model_engine = ModelEngine(raw_base)
             linked_model = model_engine.build_linked_model()
             
             fc_engine = ForecastEngine(linked_model)
@@ -467,7 +473,7 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
             
             st.session_state.model = final_model
             st.session_state.current_scale = scale_name
-            st.success(f"Successfully rescaled to {scale_name}. DCF updated.")
+            st.success(f"Successfully rescaled to {scale_name}. DCF updated with full values.")
             st.rerun()
             
         except Exception as e:

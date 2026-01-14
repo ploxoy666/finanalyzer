@@ -111,7 +111,7 @@ class FinancialExtractor:
             ]
         }
 
-    def extract(self) -> FinancialStatements:
+    def extract(self, apply_scale: bool = True) -> FinancialStatements:
         """Main extraction method."""
         logger.info("Starting intelligent data extraction from PDF text...")
         
@@ -134,7 +134,7 @@ class FinancialExtractor:
             val = self._find_value(regex_list)
             
             # Apply detected scale (e.g. if report is in Millions, multiply by 1e6)
-            if val > 0 and field != 'shares': # Shares usually have their own scale in text
+            if apply_scale and val > 0 and field != 'shares':
                  val = val * self.scale_factor
 
             # Smart annualization for 10-Q
@@ -309,19 +309,36 @@ class FinancialExtractor:
 
     def _detect_scale(self) -> float:
         """Robustly detect scale/units from the report text."""
-        header_text = self.full_text[:20000].lower() # Check more text
+        header_text = self.full_text[:40000].lower() # Check much more text
         
-        # Check for Billion
-        if any(kw in header_text for kw in ["in billions", "в миллиардах", "($ in billions)", "($ in b)", "amounts in billions"]):
+        # 1. Keywords check
+        if any(kw in header_text for kw in ["in billions", "в миллиардах", "($ in billions)", "($ in b)", "amounts in billions", "billions of dollars"]):
             return 1_000_000_000.0
             
-        # Check for Million
-        if any(kw in header_text for kw in ["in millions", "в миллионах", "($ in millions)", "($ in mm)", "amounts in millions", "figures in millions"]):
+        if any(kw in header_text for kw in ["in millions", "в миллионах", "($ in millions)", "($ in mm)", "amounts in millions", "figures in millions", "millions of dollars", "million dollars"]):
             return 1_000_000.0
             
-        # Check for Thousands
-        if any(kw in header_text for kw in ["in thousands", "в тысячах", "($ in thousands)", "($ in k)", "amounts in thousands"]):
+        if any(kw in header_text for kw in ["in thousands", "в тысячах", "($ in thousands)", "($ in k)", "amounts in thousands", "thousands of dollars"]):
             return 1_000.0
+            
+        # 2. Heuristic Inference (Smart Fallback)
+        # If we see common labels but values are very small (e.g. Revenue < 5000) 10-K, it's likely Millions
+        # This resolves the 137, 75 issue automatically.
+        patterns = [
+            r'(?i)revenue.*?([\d\s,.]+)',
+            r'(?i)total\s+revenue.*?([\d\s,.]+)',
+            r'(?i)выручка.*?([\d\s,.]+)'
+        ]
+        test_val = 0
+        for p in patterns:
+            m = re.search(p, self.full_text)
+            if m:
+                test_val = self._parse_number(m.group(1))
+                break
+        
+        if 1 < test_val < 5000:
+            logger.info(f"Scale inference: Detected small value {test_val} for revenue. Assuming Millions scale.")
+            return 1_000_000.0
             
         return 1.0 # Default
 

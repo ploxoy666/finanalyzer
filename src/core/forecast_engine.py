@@ -622,6 +622,12 @@ class ForecastEngine:
             
         # 4. Terminal Value (Perpetuity Growth)
         last_fcf = forecast_period_data[-1].free_cash_flow
+        
+        # CRITICAL: WACC must be significantly higher than terminal growth
+        if wacc <= g + 0.005:
+            wacc = g + 0.02
+            logger.warning(f"Adjusted WACC to {wacc:.1%} to prevent DCF explosion.")
+            
         terminal_value = (last_fcf * (1 + g)) / (wacc - g)
         pv_terminal_value = terminal_value / ((1 + wacc) ** len(forecast_period_data))
         
