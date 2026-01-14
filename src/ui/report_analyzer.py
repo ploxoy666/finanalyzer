@@ -266,23 +266,22 @@ def _render_dashboard(model):
 
     
 def _format_metric(value):
-    """Format numbers fully with commas (e.g. 137,000,000)."""
+    """Format numbers ALWAYS as full comma-separated values (e.g. 137,000,000)."""
     if value is None:
         return "N/A"
     
-    # Check if it's a very large number (financial metric) or small (ratio)
     abs_val = abs(value)
     if abs_val == 0:
         return "$0"
         
-    # Always return full number with commas, no suffixes
-    if abs_val >= 100:
+    # User strictly wants full numbers. 137 -> 137,000,000 only happens if value IS 137M.
+    # If the extractor got 137, and it's not scaled, it will show $137.
+    # We must ensure scaling is applied correctly.
+    if abs_val >= 10:
         return f"${value:,.0f}"
-    elif abs_val >= 1:
-        return f"${value:,.2f}"
     else:
-        # For values less than 1, use more precision
-        return f"${value:,.4f}"
+        # High precision for small ratios/prices
+        return f"${value:,.2f}"
 
 def _render_financials(model):
     """Render Financials tab with forecast controls."""
@@ -444,7 +443,11 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
             if hasattr(raw, category):
                 stmts = getattr(raw, category)
                 for stmt in stmts:
-                    scale_obj(stmt)
+                    # Robust attribute scaling for Pydantic models
+                    for field in stmt.model_fields:
+                        val = getattr(stmt, field)
+                        if field not in skip_fields and isinstance(val, (int, float)) and val is not None:
+                             setattr(stmt, field, val * scale_factor)
         
         # 3. Rebuild (Full cycle: Link -> Forecast -> Advice/DCF)
         try:

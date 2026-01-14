@@ -731,9 +731,9 @@ class ForecastEngine:
         
         wacc = (w_equity * cost_of_equity) + (w_debt * after_tax_cost_of_debt)
         
-        # Sanity check
-        if wacc < assumptions.terminal_growth_rate:
-            wacc = assumptions.terminal_growth_rate + 0.02
+        # Safe default if estimation yields 0 or suspiciously low (prevents $0 DCF)
+        if wacc < 0.05:
+            wacc = 0.085 # 8.5% is a standard safe default
             
         return wacc
 

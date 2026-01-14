@@ -1202,7 +1202,7 @@ class ReportGenerator:
             ["Enterprise Value (EV)", self._fmt(dcf.enterprise_value)],
             ["- Net Debt (Debt - Cash)", self._fmt(dcf.net_debt)],
             ["Equity Value", self._fmt(dcf.equity_value)],
-            ["Total Shares Outstanding", f"{dcf.shares_outstanding/1e6:,.1f} mil"],
+            ["Total Shares Outstanding", self._fmt(dcf.shares_outstanding)],
             ["Implied Price Per Share", f"${dcf.implied_price_per_share:,.2f}"]
         ]
         
