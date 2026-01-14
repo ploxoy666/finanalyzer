@@ -33,7 +33,7 @@ from .components import render_export_utility
 def render_report_analyzer():
     """Render the main Deep Report Intelligence interface."""
     st.markdown("## 📄 Deep Report Intelligence")
-    st.caption("Engine Version: v3.2 | Real-Value Calibration Enabled | Full-Number Formatting Forced")
+    st.caption("Engine Version: v3.3 | Multi-Scale Core | Fixed Type Safety in Re-scaling")
     st.info("Upload 10-K/10-Q PDF files for full automated analysis, 3-statement modeling, and valuation.")
     
     # File Uploader
@@ -193,28 +193,33 @@ def _render_dashboard(model):
     st.markdown(f"""
     <div style="
         padding: 20px; 
-        background-color: rgba(30, 41, 59, 1); 
-        border: 1px solid #334155; 
-        border-radius: 10px; 
-        margin-bottom: 20px;
-        color: #e2e8f0;
+        background-color: rgba(15, 23, 42, 1); 
+        border: 2px solid #334155; 
+        border-radius: 12px; 
+        margin-bottom: 25px;
+        color: #f8fafc;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     ">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Investment Thesis</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #60a5fa; font-size: 1.4em;">🧠 Alpha Investment Thesis</h3>
             <span style="
-                padding: 5px 15px; 
-                background-color: {'#22c55e' if model.recommendation == 'BUY' else '#eab308' if model.recommendation == 'HOLD' else '#ef4444'}; 
-                border-radius: 20px; 
-                font-weight: bold;
-                font-size: 0.9em;
+                padding: 6px 16px; 
+                background-color: {'#16a34a' if model.recommendation == 'BUY' else '#ca8a04' if model.recommendation == 'HOLD' else '#dc2626'}; 
+                border-radius: 30px; 
+                font-weight: 800;
+                font-size: 0.85em;
+                letter-spacing: 0.05em;
+                color: white;
             ">
                 {model.recommendation or 'NEUTRAL'}
             </span>
         </div>
-        <div style="font-size: 1.1em; line-height: 1.6; margin-top: 10px;">
-            <strong>Recommendation:</strong> {model.recommendation or 'N/A'}<br/>
-            <strong>Thesis:</strong> {model.investment_thesis or st.session_state.ai_summary or 'No summary available.'}<br/>
-            {f'<strong>Target Price:</strong> ${model.target_price:,.2f}' if model.target_price else ''}
+        <div style="font-size: 1.1em; line-height: 1.6;">
+            <p style="margin-bottom: 10px;"><strong>Thesis:</strong> {model.investment_thesis or st.session_state.ai_summary or 'No analysis available.'}</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div><strong>Target Price:</strong> <span style="color: #4ade80; font-weight: bold;">{f'${model.target_price:,.2f}' if model.target_price else 'N/A'}</span></div>
+                <div><strong>Upside:</strong> <span style="color: {'#4ade80' if (model.upside_potential or 0) > 0 else '#fb7185'}; font-weight: bold;">{f'{model.upside_potential:+.1%}' if model.upside_potential else 'N/A'}</span></div>
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -247,7 +252,7 @@ def _render_dashboard(model):
     if latest_inc.revenue < 100000 and st.session_state.get('current_scale') == 'Actuals':
         st.warning(f"⚠️ **Scale Alert:** Revenue is only {_format_metric(latest_inc.revenue)}. Many reports use Millions/Billions. If this looks too low, use the sidebar to change 'Data Scale' to Millions.")
         if st.button("🚀 Quick Fix: Switch to Millions"):
-            _apply_scale_and_rebuild(1000000.0, "Millions (x1MM)")
+            _apply_scale_and_rebuild("Millions (x1MM)", 1000000.0)
     
     st.markdown("---")
     
@@ -294,21 +299,24 @@ def _render_dashboard(model):
 
     
 def _format_metric(value):
-    """Format numbers ALWAYS as full comma-separated values (e.g. 137,000,000)."""
+    """Format numbers into human-readable strings with Million/Billion suffixes."""
     if value is None:
         return "N/A"
     
     abs_val = abs(value)
     if abs_val == 0:
         return "$0"
-        
-    # User strictly wants full numbers. 137 -> 137,000,000 only happens if value IS 137M.
-    # If the extractor got 137, and it's not scaled, it will show $137.
-    # We must ensure scaling is applied correctly.
-    if abs_val >= 10:
+    
+    # Thresholds for suffixes
+    if abs_val >= 1_000_000_000:
+        return f"${value/1_000_000_000:,.2f}B"
+    elif abs_val >= 1_000_000:
+        return f"${value/1_000_000:,.1f}M"
+    elif abs_val >= 1_000:
+        return f"${value/1_000:,.0f}K"
+    elif abs_val >= 10:
         return f"${value:,.0f}"
     else:
-        # High precision for small ratios/prices
         return f"${value:,.2f}"
 
 def _render_financials(model):
@@ -465,6 +473,9 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
                         if field not in skip_fields:
                             val = getattr(stmt, field)
                             if isinstance(val, (int, float)) and val is not None:
+                                # Special handling for shares to avoid double scaling
+                                if 'shares' in field.lower() and val > 500_000:
+                                    continue
                                 setattr(stmt, field, val * scale_factor)
         
         # 3. Rebuild (Full cycle: Link -> Forecast -> Advice/DCF)

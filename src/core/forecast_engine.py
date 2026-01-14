@@ -663,18 +663,13 @@ class ForecastEngine:
                 fc_inc = self.model.forecast_income_statements[-1]
                 shares = fc_inc.shares_outstanding_diluted or fc_inc.shares_outstanding_basic or 0
         
-        # Handle unit conversion
-        if shares > 0:
-            # Check threshold (e.g., < 1M usually means reported in millions)
-            if shares < config.thresholds.SHARES_MILLIONS_THRESHOLD:
-                original_shares = shares
-                shares *= 1e6
-                logger.info(f"Converted shares from millions: {original_shares:,.2f}M -> {shares:,.0f}")
-        
-        # Final fallback
-        if not shares or shares <= 0:
-            logger.warning(f"Could not determine shares outstanding. Using fallback of {config.defaults.FALLBACK_SHARES_OUTSTANDING:,.0f}.")
-            shares = config.defaults.FALLBACK_SHARES_OUTSTANDING
+        # Handle unit conversion for shares if they seem to be in millions/thousands
+        # (This is a safety check if they weren't scaled during extraction)
+        if shares > 0 and shares < 20000: # 20k shares is tiny for a public company
+             # Likely reported in millions
+             original_shares = shares
+             shares *= 1e6
+             logger.info(f"DCF Safety Scaling: Converted shares from millions: {original_shares:,.2f}M -> {shares:,.0f}")
         
         implied_price = equity_value / shares if shares > 0 else 0
         

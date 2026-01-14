@@ -24,7 +24,7 @@ class FinancialExtractor:
                 r'(?i)Total\s+net\s+sales\s+[\$]?\s*([\d,.]+)',
                 r'(?i)Revenue,\s+net\s+[\$]?\s*([\d,.]+)',
                 r'(?i)Доходы\s+от\s+реализации\s+[\$]?\s*([\d\s,.\(\)]+)',
-                r'(?i)Выручка\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Выручка\s+(?:от\s+реализации\s+)?[\$]?\s*([\d\s,.\(\)]+)',
                 r'(?i)Общий\s+доход\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'cost_of_revenue': [
@@ -50,51 +50,49 @@ class FinancialExtractor:
                 r'(?i)Net\s+earnings\s+[\$]?\s*([\d,.]+)', 
                 r'(?i)Net\s+income\s+attributable\s+to\s+[\w\s]+\s+[\$]?\s*([\d,.]+)',
                 r'(?i)Общий\s+совокупный\s+доход\s+за\s+год\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Прибыль\s+за\s+период\s+[\$]?\s*([\d\s,.\(\)]+)',
                 r'(?i)Прибыль\s+за\s+год\s+[\$]?\s*([\d\s,.\(\)]+)',
                 r'(?i)Чистая\s+прибыль\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'total_assets': [
-                r'(?i)Total\s+assets\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Total\s+assets\s+[\$]?\s*([\d,.\s]+)',
+                r'(?i)Итого\s+(?:по\s+разделу\s+)?активов\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Активы,\s+всего\s+[\$]?\s*([\d\s,.\(\)]+)',
                 r'(?i)Итого\s+активов\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'total_liabilities': [
-                r'(?i)Total\s+liabilities\s+[\$]?\s*([\d,.]+)',
+                r'(?i)Total\s+liabilities\s+[\$]?\s*([\d,.\s]+)',
+                r'(?i)Обязательства,\s+всего\s+[\$]?\s*([\d\s,.\(\)]+)',
                 r'(?i)Итого\s+обязательств\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'total_equity': [
-                r'(?i)Total\s+shareholders.\s+equity\s+[\$]?\s*([\d,.]+)', 
-                r'(?i)Total\s+equity\s+[\$]?\s*([\d,.]+)',
-                r'(?i)Итого\s+капитал\s+[\$]?\s*([\d\s,.\(\)]+)'
+                r'(?i)Total\s+shareholders.\s+equity\s+[\$]?\s*([\d,.\s]+)', 
+                r'(?i)Total\s+equity\s+[\$]?\s*([\d,.\s]+)',
+                r'(?i)Итого\s+капитал\s+[\$]?\s*([\d\s,.\(\)]+)',
+                r'(?i)Капитал\s+и\s+резервы\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'shares': [
-                r'(?i)Common\s+stock\s+outstanding.*?([\d,.]+)', 
-                r'(?i)shares\s+of\s+common\s+stock\s+outstanding.*?([\d,.]+)', 
                 r'(?i)Weighted\s+average\s+shares.*?diluted.*?([\d,.]+)',
-                r'(?i)Diluted\s+shares.*?([\d,.]+)'
+                r'(?i)Diluted\s+shares.*?([\d,.]+)',
+                r'(?i)Common\s+stock\s+outstanding.*?([\d,.]+)', 
+                r'(?i)shares\s+of\s+common\s+stock\s+outstanding.*?([\d,.]+)',
+                r'(?i)Число\s+акций\s+[\$]?\s*([\d\s,.\(\)]+)'
             ],
             'ticker': [r'(?i)\(?(NASDAQ|NYSE|OTC|TSX)\s*:\s*([A-Z]+)\)?', r'(?i)Symbol\s*:\s*([A-Z]+)'],
-            # Cash Flow Items
             'capital_expenditures': [
-                r'(?i)Capital\s+expenditures?\s*[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Purchase\s+of\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Purchases\s+related\s+to\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Acquisitions?\s+of\s+property.*?[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Capital\s+expenditures?\s*[\$]?\s*\(?([\d,.\s]+)\)?',
+                r'(?i)Purchase\s+of\s+property.*?[\$]?\s*\(?([\d,.\s]+)\)?',
                 r'(?i)Капитальные\s+затраты\s*[\$]?\s*\(?([\d\s,.]+)\)?'
             ],
-            'dividends_paid': [
-                r'(?i)Dividends?\s+paid\s*[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Cash\s+dividends?\s*[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Дивиденды\s+выплаченные\s*[\$]?\s*\(?([\d\s,.]+)\)?'
-            ],
             'cash_from_operations': [
-                r'(?i)Net\s+cash\s+(?:provided\s+by|from)\s+operating\s+activities\s*[\$]?\s*\(?([\d,.]+)\)?',
-                r'(?i)Cash\s+flows?\s+from\s+operating\s+activities\s*[\$]?\s*\(?([\d,.]+)\)?',
+                r'(?i)Net\s+cash\s+(?:provided\s+by|from)\s+operating\s+activities\s*[\$]?\s*\(?([\d,.\s]+)\)?',
+                r'(?i)Чистые\s+денежные\s+средства\s+от\s+операционной\s+деятельности\s*[\$]?\s*\(?([\d\s,.]+)\)?',
                 r'(?i)Денежные\s+средства\s+от\s+операционной\s+деятельности\s*[\$]?\s*\(?([\d\s,.]+)\)?'
             ],
             'depreciation': [
                 r'(?i)Depreciation\s+and\s+amortization\s*[\$]?\s*([\d,.]+)',
                 r'(?i)Depreciation\s*[\$]?\s*([\d,.]+)',
-                r'(?i)Амортизация\s*[\$]?\s*([\d\s,.]+)'
+                r'(?i)Амортизация\s+(?:основных\s+средств\s+и\s+нематериальных\s+активов\s+)?[\$]?\s*([\d\s,.]+)'
             ],
             'accounts_receivable': [
                 r'(?i)Accounts\s+receivable.*?[\$]?\s*([\d,.]+)',
@@ -106,7 +104,8 @@ class FinancialExtractor:
                 r'(?i)Запасы\s*[\$]?\s*([\d\s,.]+)'
             ],
             'cash_and_equivalents': [
-                r'(?i)Cash\s+and\s+cash\s+equivalents?\s*[\$]?\s*([\d,.]+)',
+                r'(?i)Cash\s+and\s+cash\s+equivalents?\s*[\$]?\s*([\d,.\s]+)',
+                r'(?i)Денежные\s+средства\s+и\s+их\s+эквиваленты\s*[\$]?\s*([\d\s,.]+)',
                 r'(?i)Денежные\s+средства\s+и\s+эквиваленты\s*[\$]?\s*([\d\s,.]+)'
             ]
         }
@@ -128,14 +127,18 @@ class FinancialExtractor:
         data = {}
         # Special handling for 10-Q time periods
         is_quarterly = report_type == ReportType.FORM_10Q
-        
         for field, regex_list in self.patterns.items():
             # If it's a 10-Q and it's an Income Statement item, we might need to annualize
             val = self._find_value(regex_list)
             
             # Apply detected scale (e.g. if report is in Millions, multiply by 1e6)
-            if apply_scale and val > 0 and field != 'shares':
-                 val = val * self.scale_factor
+            if apply_scale and val > 0:
+                 # Special handling for shares to avoid double scaling if already in actuals
+                 if field == 'shares' and val > 500_000:
+                     # Already looks like actuals (500k is a lot for a small company)
+                     pass
+                 else:
+                     val = val * self.scale_factor
 
             # Smart annualization for 10-Q
             if is_quarterly and field in ['revenue', 'cost_of_revenue', 'gross_profit', 'operating_income', 'net_income']:
@@ -309,21 +312,23 @@ class FinancialExtractor:
 
     def _detect_scale(self) -> float:
         """Robustly detect scale/units from the report text."""
-        header_text = self.full_text[:40000].lower() # Check much more text
+        # 1. Search the entire text for specific scale orientation
+        # (Most SEC reports have this on the first page of financial statements)
+        full_text_lower = self.full_text.lower()
         
-        # 1. Keywords check
-        if any(kw in header_text for kw in ["in billions", "в миллиардах", "($ in billions)", "($ in b)", "amounts in billions", "billions of dollars"]):
+        # Check more keywords and variations
+        if any(kw in full_text_lower for kw in ["in billions", "в миллиардах", "($ in billions)", "($ in b)", "amounts in billions"]):
             return 1_000_000_000.0
             
-        if any(kw in header_text for kw in ["in millions", "в миллионах", "($ in millions)", "($ in mm)", "amounts in millions", "figures in millions", "millions of dollars", "million dollars"]):
+        if any(kw in full_text_lower for kw in ["in millions", "в миллионах", "($ in millions)", "($ in mm)", "amounts in millions", "figures in millions", "millions of dollars"]):
             return 1_000_000.0
             
-        if any(kw in header_text for kw in ["in thousands", "в тысячах", "($ in thousands)", "($ in k)", "amounts in thousands", "thousands of dollars"]):
+        if any(kw in full_text_lower for kw in ["in thousands", "в тысячах", "($ in thousands)", "($ in k)", "amounts in thousands"]):
             return 1_000.0
             
         # 2. Heuristic Inference (Smart Fallback)
-        # We look for revenue specifically. If revenue is < 10000, it's 99% likely to be Millions in a corporate report.
-        # We look for patterns like "Total Revenue ..... 1,234"
+        # Look for revenue. If it's a small number (< 500,000) but it's clearly a corporate report, 
+        # it is almost certainly in Millions.
         patterns = [
             r'(?i)Total\s+Revenue[^\.\d%]*?([\d\s,]+)',
             r'(?i)Revenue[^\.\d%]*?([\d\s,]+)',
@@ -331,20 +336,22 @@ class FinancialExtractor:
         ]
         test_val = 0
         for p in patterns:
-            # Use search to find the first occurrence which is usually the 'Current Year' in the summary
             m = re.search(p, self.full_text)
             if m:
                 extracted = self._parse_number(m.group(1))
-                if extracted > 1: # Ignore tiny values or errors
+                if extracted > 1:
                     test_val = extracted
                     break
         
-        # If test_val is e.g. 137 or 1500, and it's a corporate report, assume Millions.
-        if 1 < test_val < 30000:
-            logger.info(f"Scale inference: Detected small value {test_val} for revenue. Assuming Millions scale.")
+        # Threshold: If revenue is < 500,000, we check if it's likely Millions or Thousands.
+        # Major companies (10-K/10-Q) usually have revenues in the 100s or 1000s when reported in Millions.
+        if 1 < test_val < 500000:
+            # If it's a very small number like 137 or 2000, it's definitely scaled.
+            # Assuming Millions is a safer bet for SEC filers if keyword was missing.
+            logger.info(f"Scale inference: Detected value {test_val} for revenue. Assuming Millions scale.")
             return 1_000_000.0
             
-        return 1.0 # Default
+        return 1.0 # Default to actuals if number is already huge or no pattern found
 
     def _extract_company_name(self) -> str:
         """Attempt to find company name on the first page with robust fallback."""
@@ -450,31 +457,41 @@ class FinancialExtractor:
             return 0.0
 
     def _find_value(self, patterns: List[str]) -> float:
-        """Finds the first numeric value matching the patterns."""
+        """Finds the 'most representative' numeric value matching the patterns."""
+        best_val = 0.0
+        
         for pattern in patterns:
-            # Look for pattern followed by number. 
-            matches = re.findall(pattern, self.full_text, re.IGNORECASE)
-            if matches:
-                # Take the last match as it's often the 'current year' column in tables (usually left)
-                # But sometimes regex captures "Revenue ... 2016 ... 2015".
-                # Regex patterns above capture a single group at the end.
-                # In Russian tables: "Доходы ... 7.243.659 ... 4.977.019"
-                # To capture the FIRST number (current year), we depend on the regex.
-                # My regexes above generally grab the number immediately following the label.
-                # If there are multiple columns, regex might stop at the first one if greedy?
-                # Actually [\d\s,.]+ will capture "7.243.659   4.977.019".
-                # We need to split that.
+            # finditer gives us more control
+            matches = list(re.finditer(pattern, self.full_text, re.IGNORECASE))
+            if not matches:
+                continue
+            
+            # Heuristic: The best match is often in a table, not the first mention in text.
+            # Table matches often have multiple columns (more numbers in proximity).
+            # For now, we look through matches and pick the one with most 'separator-heavy' content
+            # or simply one that matches a standard financial pattern.
+            
+            vals_found = []
+            for m in matches:
+                # Group 1 is our number
+                val_raw = m.group(1)
                 
-                val_raw = matches[0] 
+                # Split by space to check for multiple columns
                 parts = val_raw.strip().split()
-                if len(parts) > 1:
-                    val_str = parts[0]  # First column is usually current year
-                else:
-                    val_str = val_raw
-                
+                # Most financial tables have current year first (leftmost) or sometimes last.
+                # Regex patterns are usually structured to catch the first number after label.
+                val_str = parts[0]
                 parsed = self._parse_number(val_str)
-                # Assume thousands if small number? No, usually reports say "in thousands".
-                # We can't auto-detect unit easily without reading header "in millions".
-                # For now returning raw.
-                return parsed
+                
+                if parsed != 0:
+                    vals_found.append(parsed)
+            
+            if vals_found:
+                # Heuristic: prefer larger numbers (thousands/millions are better than 0.something)
+                # and prefer ones that appear later in the document (tables are later than summary)
+                # But actually, SEC tables appear relatively early (~10-30 page).
+                # Highlights appear on page 1-5.
+                # Let's just pick the FIRST non-zero one for now, as it's usually current year.
+                return vals_found[0]
+                
         return 0.0
