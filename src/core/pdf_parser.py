@@ -176,6 +176,33 @@ class PDFParser:
                 pages.append(text)
                 logger.debug(f"OCR page {i+1}: {len(text)} chars")
         except Exception as e:
+            logger.error(f"Error in OCR extraction: {e}")
+            raise
+        
+        return pages
+    
+    def _extract_tables(self) -> List[Dict]:
+        """
+        Extract tables from PDF using targeted and lightweight methods.
+        Uses identified structure to target heavy extraction only on relevant pages.
+        """
+        all_tables = []
+        target_pages = []
+        
+        # 1. Determine target pages from structure
+        structure = self._analyze_structure()
+        for section in structure.values():
+            if section.get('found') and section.get('page'):
+                target_pages.append(section['page'])
+        
+        # Add surrounding pages just in case
+        extra_pages = []
+        for p in target_pages:
+            extra_pages.extend([p+1, p+2])
+        target_pages = sorted(list(set(target_pages + extra_pages)))
+
+        logger.info(f"Targeting table extraction on pages: {target_pages or 'default'}")
+
         # Method 1: pdfplumber (Fastest & Lightest - Use for ALL pages)
         try:
             with pdfplumber.open(self.pdf_path) as pdf:

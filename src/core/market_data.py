@@ -47,7 +47,7 @@ class MarketDataProvider:
         try:
             # Rate limiting
             time.sleep(config.api.REQUEST_DELAY_SECONDS)
-                        stock = yf.Ticker(ticker)
+            stock = yf.Ticker(ticker)
             
             # Try to get info safely
             info = {}

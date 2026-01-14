@@ -251,16 +251,14 @@ def _render_dashboard(model):
 
     
 def _format_metric(value):
-    """Format large numbers adaptively (K, M, B)."""
+    """Format large numbers adaptively (Full, Mil, Bil)."""
     if value is None:
         return "N/A"
     abs_val = abs(value)
     if abs_val >= 1e9:
-        return f"${value/1e9:.1f}B"
+        return f"${value/1e9:.1f} bil"
     elif abs_val >= 1e6:
-        return f"${value/1e6:.1f}M"
-    elif abs_val >= 1e3:
-        return f"${value/1e3:.1f}K"
+        return f"${value/1e6:.1f} mil"
     else:
         return f"${value:,.0f}"
 
@@ -324,7 +322,7 @@ def _render_valuation(model):
                 model.assumptions.terminal_growth_rate = new_tg
                 # Re-run forecast engine to update DCF
                 fc = ForecastEngine(model)
-                st.session_state.model = fc.forecast(model.forecast_years, model.selected_scenario or ScenarioType.BASE)
+                st.session_state.model = fc.forecast(model.forecast_years, model.assumptions.scenario or ScenarioType.BASE)
                 st.rerun()
 
     if dcf and dcf.enterprise_value > 0:
@@ -421,9 +419,9 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
             
             fc_engine = ForecastEngine(linked_model)
             current_scenario = ScenarioType.BASE
-            if "model" in st.session_state and hasattr(st.session_state.model, 'selected_scenario'):
-                 if st.session_state.model.selected_scenario:
-                     current_scenario = st.session_state.model.selected_scenario
+            if "model" in st.session_state and hasattr(st.session_state.model, 'assumptions') and st.session_state.model.assumptions:
+                 if st.session_state.model.assumptions.scenario:
+                     current_scenario = st.session_state.model.assumptions.scenario
 
             final_model = fc_engine.forecast(years=5, scenario=current_scenario)
             

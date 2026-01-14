@@ -229,6 +229,9 @@ class ForecastEngine:
         
         else:
             logger.info("Using base scenario assumptions")
+        
+        # Save scenario to assumptions so it persists
+        self.model.assumptions.scenario = scenario
     
     def _forecast_income_statement(
         self,
