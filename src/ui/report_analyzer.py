@@ -135,6 +135,9 @@ def _process_file_upload(uploaded_file):
                 # Use default assumptions initially
                 final_model = fc_engine.forecast(years=5, scenario=ScenarioType.BASE)
                 
+                # Generate investment advice (thesis, recommendation, target price)
+                final_model = fc_engine.generate_investment_advice()
+                
                 # 6. AI Analysis (Async-like)
                 if AI_AVAILABLE:
                     status.write("🧠 Running AI Sentiment & Risk Analysis...")
@@ -165,22 +168,34 @@ def _render_dashboard(model):
     st.subheader(f"Executive Summary: {model.company_name}")
     
     # Styled AI Summary (Moved to top for visibility)
-    if st.session_state.get("ai_summary"):
-        st.markdown(f"""
-        <div style="
-            padding: 20px; 
-            background-color: rgba(30, 41, 59, 1); 
-            border: 1px solid #334155; 
-            border-radius: 10px; 
-            margin-bottom: 20px;
-            color: #e2e8f0;
-        ">
-            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Key Findings</h3>
-            <div style="font-size: 1.05em; line-height: 1.6;">
-                {st.session_state.ai_summary}
-            </div>
+    st.markdown(f"""
+    <div style="
+        padding: 20px; 
+        background-color: rgba(30, 41, 59, 1); 
+        border: 1px solid #334155; 
+        border-radius: 10px; 
+        margin-bottom: 20px;
+        color: #e2e8f0;
+    ">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin-top: 0; color: #60a5fa;">🧠 AI Investment Thesis</h3>
+            <span style="
+                padding: 5px 15px; 
+                background-color: {'#22c55e' if model.recommendation == 'BUY' else '#eab308' if model.recommendation == 'HOLD' else '#ef4444'}; 
+                border-radius: 20px; 
+                font-weight: bold;
+                font-size: 0.9em;
+            ">
+                {model.recommendation or 'NEUTRAL'}
+            </span>
         </div>
-        """, unsafe_allow_html=True)
+        <div style="font-size: 1.1em; line-height: 1.6; margin-top: 10px;">
+            <strong>Recommendation:</strong> {model.recommendation or 'N/A'}<br/>
+            <strong>Thesis:</strong> {model.investment_thesis or st.session_state.ai_summary or 'No summary available.'}<br/>
+            {f'<strong>Target Price:</strong> ${model.target_price:,.2f}' if model.target_price else ''}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.write("")
     
@@ -251,16 +266,24 @@ def _render_dashboard(model):
 
     
 def _format_metric(value):
-    """Format large numbers adaptively (Full, Mil, Bil)."""
+    """Format large numbers adaptively in documentary style (Full, Mil, Bil)."""
     if value is None:
         return "N/A"
     abs_val = abs(value)
+    
+    # Check if the number is already "simplified" (e.g. 137 instead of 137M)
+    # If it's small but we are looking at a multi-billion dollar company (detected by extractor), 
+    # we might want to force "mil" label. 
+    # But more robustly, we use the raw value.
+    
     if abs_val >= 1e9:
-        return f"${value/1e9:.1f} bil"
+        return f"${value/1e9:,.1f} bil"
     elif abs_val >= 1e6:
-        return f"${value/1e6:.1f} mil"
+        return f"${value/1e6:,.1f} mil"
+    elif abs_val >= 1000:
+        return f"${value:,.0f}" # Thousands write fully with commas
     else:
-        return f"${value:,.0f}"
+        return f"${value:,.2f}" if abs_val < 100 else f"${value:,.0f}"
 
 def _render_financials(model):
     """Render Financials tab with forecast controls."""
@@ -268,11 +291,18 @@ def _render_financials(model):
     
     # Scenario Controls
     col_s1, col_s2 = st.columns(2)
-    scenario = col_s1.selectbox("Growth Scenario", [s.value for s in ScenarioType], index=0)
+    current_scenario = model.assumptions.scenario if model.assumptions and model.assumptions.scenario else ScenarioType.BASE
+    scenario_list = [s.value for s in ScenarioType]
+    scenario = col_s1.selectbox(
+        "Growth Scenario", 
+        scenario_list, 
+        index=scenario_list.index(current_scenario) if current_scenario in scenario_list else 0
+    )
     
     if st.button("Update Forecast"):
         fc_engine = ForecastEngine(model)
         new_model = fc_engine.forecast(years=5, scenario=scenario)
+        new_model = fc_engine.generate_investment_advice()
         st.session_state.model = new_model
         st.rerun()
     
@@ -322,7 +352,10 @@ def _render_valuation(model):
                 model.assumptions.terminal_growth_rate = new_tg
                 # Re-run forecast engine to update DCF
                 fc = ForecastEngine(model)
-                st.session_state.model = fc.forecast(model.forecast_years, model.assumptions.scenario or ScenarioType.BASE)
+                # FIX: Use keyword arguments to avoid positional mismatch
+                new_model = fc.forecast(years=model.forecast_years, scenario=model.assumptions.scenario or ScenarioType.BASE)
+                new_model = fc.generate_investment_advice()
+                st.session_state.model = new_model
                 st.rerun()
 
     if dcf and dcf.enterprise_value > 0:

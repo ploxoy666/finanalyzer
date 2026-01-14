@@ -120,36 +120,28 @@ class FinancialExtractor:
         year = self._extract_fiscal_year()
         logger.info(f"Detected Report: {report_type.value}, Fiscal Year: {year}")
         
-        # 2. Extract Key Metrics
+        # 2. Detect Scale/Unit (Millions, Thousands, etc.)
+        self.scale_factor = self._detect_scale()
+        logger.info(f"Detected numeric scale factor: {self.scale_factor}")
+        
+        # 3. Extract Key Metrics
         data = {}
         # Special handling for 10-Q time periods
         is_quarterly = report_type == ReportType.FORM_10Q
-        period_multiplier = 1.0
-        
-        if is_quarterly:
-             # Find if we are looking at 3 months or 9 months
-             # Usually the first table is "Condensed Statements of Operations"
-             # which has "Three months ended" and "Nine months ended" columns.
-             if re.search(r'(?i)nine\s+months\s+ended', self.full_text[:20000]):
-                 # If we see 9 months, we might take values from that column.
-                 # But standardizing to 'annual equivalent' is safer for DCF.
-                 # Let's check for "Three months ended"
-                 pass 
         
         for field, regex_list in self.patterns.items():
             # If it's a 10-Q and it's an Income Statement item, we might need to annualize
             val = self._find_value(regex_list)
             
+            # Apply detected scale (e.g. if report is in Millions, multiply by 1e6)
+            if val > 0 and field != 'shares': # Shares usually have their own scale in text
+                 val = val * self.scale_factor
+
             # Smart annualization for 10-Q
             if is_quarterly and field in ['revenue', 'cost_of_revenue', 'gross_profit', 'operating_income', 'net_income']:
-                # Heuristic: If we are in a 10-Q, and we have multiple matches, the first is usually 3-month.
-                # However, many 10-Qs highlight the quarter-over-quarter growth.
-                # If we assume the extracted value is for 1 quarter, multiply by 4.
-                # If it's already annualized or YTD, we should detect.
-                # For now: detect 'Three months ended' vs 'Nine months ended'
                 # Simplest logic: If it's 10-Q, multiply by 4 (run rate)
                 val = val * 4
-                logger.info(f"Annualizing 10-Q {field}: {val/4} -> {val}")
+                logger.debug(f"Annualizing 10-Q {field}")
 
             data[field] = val
             if val > 0:
@@ -167,9 +159,8 @@ class FinancialExtractor:
         if rev > 0 and gross > 0 and cost == 0:
             cost = rev - gross
             
-        # Sanity check for Gross Profit (if it's unreasonably small, e.g. < 1% of revenue, likely a regex error)
         if rev > 1_000_000 and gross < rev * 0.01:
-            logger.warning(f"Extracted Gross Profit ({gross}) seems too low compared to Revenue ({rev}). Ignoring.")
+            logger.warning(f"Extracted Gross Profit ({gross}) seems too low compared to Revenue ({rev}).")
             gross = 0
             
         # If Gross Profit is missing or rejected, estimate it or derive from Net Income
@@ -315,6 +306,20 @@ class FinancialExtractor:
             balance_sheets=[bs_stmt],
             cash_flow_statements=[cf_stmt]
         )
+
+    def _detect_scale(self) -> float:
+        """Detect if financial figures are in thousands, millions, or billions."""
+        # Check first 5000 chars (usually has the 'in millions' header)
+        header_text = self.full_text[:10000].lower()
+        
+        if "in billions" in header_text or "в миллиардах" in header_text:
+            return 1_000_000_000.0
+        if "in millions" in header_text or "в миллионах" in header_text:
+            return 1_000_000.0
+        if "in thousands" in header_text or "в тысячах" in header_text:
+            return 1_000.0
+            
+        return 1.0 # Default
 
     def _extract_company_name(self) -> str:
         """Attempt to find company name on the first page with robust fallback."""
