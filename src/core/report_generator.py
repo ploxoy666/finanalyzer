@@ -73,17 +73,12 @@ class ReportGenerator:
         logger.info(f"Initialized ReportGenerator for {linked_model.company_name}")
     
     def _fmt(self, value):
-        """Format large numbers with mil/bil suffixes in documentary style."""
+        """Format numbers fully with commas (e.g. 1,000,000.00)."""
         if value is None: return "N/A"
-        abs_val = abs(value)
-        if abs_val >= 1e9:
-            return f"${value/1e9:,.1f} bil"
-        elif abs_val >= 1e6:
-            return f"${value/1e6:,.1f} mil"
-        elif abs_val >= 1000:
-            return f"${value:,.0f}" # Full with commas
+        if abs(value) >= 100:
+            return f"${value:,.0f}"
         else:
-            return f"${value:,.2f}" if abs_val < 100 else f"${value:,.0f}"
+            return f"${value:,.2f}"
 
     def _setup_wall_street_styles(self):
         """Define professional financial report styles."""

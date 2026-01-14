@@ -135,7 +135,7 @@ def _process_file_upload(uploaded_file):
                 # Use default assumptions initially
                 final_model = fc_engine.forecast(years=5, scenario=ScenarioType.BASE)
                 
-                # Generate investment advice (thesis, recommendation, target price)
+                # IMPORTANT: Initial advice generation includes DCF calculation
                 final_model = fc_engine.generate_investment_advice()
                 
                 # 6. AI Analysis (Async-like)
@@ -266,20 +266,23 @@ def _render_dashboard(model):
 
     
 def _format_metric(value):
-    """Format large numbers adaptively in documentary style (Full, Mil, Bil)."""
+    """Format numbers fully with commas (e.g. 137,000,000)."""
     if value is None:
         return "N/A"
-    abs_val = abs(value)
     
-    if abs_val >= 1e9:
-        return f"${value/1e9:,.1f} bil"
-    elif abs_val >= 1e6:
-        return f"${value/1e6:,.1f} mil"
-    elif abs_val >= 1000:
-        return f"${value:,.0f}" # Thousands write fully with commas
+    # Check if it's a very large number (financial metric) or small (ratio)
+    abs_val = abs(value)
+    if abs_val == 0:
+        return "$0"
+        
+    # Always return full number with commas, no suffixes
+    if abs_val >= 100:
+        return f"${value:,.0f}"
+    elif abs_val >= 1:
+        return f"${value:,.2f}"
     else:
-        # For small numbers (like ratios or single digits), use decimals
-        return f"${value:,.2f}" if abs_val < 100 else f"${value:,.0f}"
+        # For values less than 1, use more precision
+        return f"${value:,.4f}"
 
 def _render_financials(model):
     """Render Financials tab with forecast controls."""
@@ -415,33 +418,35 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
         return
 
     with st.spinner(f"Rescaling data to {scale_name}..."):
+        # 1. Get Base Data (Always re-extract or use unscaled session state if we had it)
+        # For simplicity, we assume 'raw_statements' in session state is the BASE 1.0 scale
         if "raw_statements" not in st.session_state:
             st.error("Raw data missing. Please upload a report first.")
             return
 
-        # 1. Get Clean Copy
         raw = copy.deepcopy(st.session_state.raw_statements)
         
-        # 2. Multiply numeric fields
+        # 2. Multiply numeric fields ONLY if scale > 1.0 and they haven't been scaled yet
+        # Actually, let's treat 'raw_statements' as the result of PDF extraction.
+        # If extractor found 130, and user selects 'Billions', we should multiply by 1e9.
+        
         skip_fields = {'period_end', 'period_start', 'fiscal_year'}
         
-        # Helper to scale object
         def scale_obj(obj):
             if hasattr(obj, '__dict__'):
                 for field, value in obj.__dict__.items():
                     if field not in skip_fields and isinstance(value, (int, float)) and value is not None:
-                        # Skip small numbers that look like ratios (e.g. EPS < 1000) if scaling by Million?
-                        # No, if Shares are in millions, they must be scaled too.
-                        # If everything is 'in millions', then everything scales.
-                        # Except margins? Margins are calculated, not extracted usually.
-                        setattr(obj, field, value * scale_factor)
+                         # Shares should also scale if they are in millions/thousands
+                         setattr(obj, field, value * scale_factor)
         
-        for category in ['income_statements', 'balance_sheets', 'cash_flows']:
-            if category in raw:
-                for stmt in raw[category]:
+        # Scale each statement in each category
+        for category in ['income_statements', 'balance_sheets', 'cash_flow_statements']:
+            if hasattr(raw, category):
+                stmts = getattr(raw, category)
+                for stmt in stmts:
                     scale_obj(stmt)
         
-        # 3. Rebuild
+        # 3. Rebuild (Full cycle: Link -> Forecast -> Advice/DCF)
         try:
             model_engine = ModelEngine(raw)
             linked_model = model_engine.build_linked_model()
@@ -452,13 +457,14 @@ def _apply_scale_and_rebuild(scale_name, scale_factor):
                  if st.session_state.model.assumptions.scenario:
                      current_scenario = st.session_state.model.assumptions.scenario
 
+            # Re-run forecast
             final_model = fc_engine.forecast(years=5, scenario=current_scenario)
-            # CRITICAL: Always regenerate advice/DCF after model update
+            # Re-calculate DCF & Advice
             final_model = fc_engine.generate_investment_advice()
             
             st.session_state.model = final_model
             st.session_state.current_scale = scale_name
-            st.success(f"Rescaled to {scale_name}. DCF and Forecast updated.")
+            st.success(f"Successfully rescaled to {scale_name}. DCF updated.")
             st.rerun()
             
         except Exception as e:

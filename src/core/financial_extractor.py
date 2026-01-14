@@ -308,15 +308,19 @@ class FinancialExtractor:
         )
 
     def _detect_scale(self) -> float:
-        """Detect if financial figures are in thousands, millions, or billions."""
-        # Check first 5000 chars (usually has the 'in millions' header)
-        header_text = self.full_text[:10000].lower()
+        """Robustly detect scale/units from the report text."""
+        header_text = self.full_text[:20000].lower() # Check more text
         
-        if "in billions" in header_text or "в миллиардах" in header_text:
+        # Check for Billion
+        if any(kw in header_text for kw in ["in billions", "в миллиардах", "($ in billions)", "($ in b)", "amounts in billions"]):
             return 1_000_000_000.0
-        if "in millions" in header_text or "в миллионах" in header_text:
+            
+        # Check for Million
+        if any(kw in header_text for kw in ["in millions", "в миллионах", "($ in millions)", "($ in mm)", "amounts in millions", "figures in millions"]):
             return 1_000_000.0
-        if "in thousands" in header_text or "в тысячах" in header_text:
+            
+        # Check for Thousands
+        if any(kw in header_text for kw in ["in thousands", "в тысячах", "($ in thousands)", "($ in k)", "amounts in thousands"]):
             return 1_000.0
             
         return 1.0 # Default
